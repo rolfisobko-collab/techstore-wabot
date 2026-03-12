@@ -32,11 +32,10 @@ router.post("/config", async (req, res) => {
 router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const { uploadPdfToStorage } = require("./firebase");
+    const { uploadPdf } = require("./cloudinary");
     const { saveConfig } = require("./configLoader");
-    const filename = `pricelist_${Date.now()}.pdf`;
-    const url = await uploadPdfToStorage(req.file.buffer, filename);
-    await saveConfig({ pdfUrl: url, pdfName: req.file.originalname });
+    const { url, fileName } = await uploadPdf(req.file.buffer, req.file.originalname);
+    await saveConfig({ pdfUrl: url, pdfName: fileName });
     res.json({ ok: true, fileName: req.file.originalname, url });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -2,6 +2,7 @@ require("dotenv").config();
 const { reloadConfig } = require("./src/configLoader");
 const { createApp } = require("./src/api");
 const { initFirebase } = require("./src/firebase");
+const { initCloudinary } = require("./src/cloudinary");
 
 const PORT = process.env.PORT || 8000;
 
@@ -9,6 +10,7 @@ async function main() {
   console.log("[App] Starting TechStore WhatsApp Bot...");
 
   initFirebase();
+  initCloudinary();
   await reloadConfig();
 
   const app = createApp();
