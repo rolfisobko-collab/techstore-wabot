@@ -1,34 +1,96 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const qrcode = require("qrcode");
 const path = require("path");
-const { processMessage } = require("./ai");
+const fs = require("fs");
+const { canSend, markSent } = require("./firebase");
 
-const AUTH_PATH = path.join(__dirname, "../.wa_auth");
+const NUM_INSTANCES = 3;
 
-let sock = null;
-let status = "disconnected"; // disconnected | connecting | qr_ready | connected
-let qrDataUrl = null;
-let qrRaw = null;
-
-function getWhatsappStatus() {
-  return { status, qrDataUrl, qrRaw };
+function getAuthPath(id) {
+  return path.join(__dirname, `../.wa_auth_${id}`);
 }
 
-async function connectWhatsapp() {
-  if (sock) {
-    await disconnectWhatsapp();
+const instances = {};
+
+for (let i = 1; i <= NUM_INSTANCES; i++) {
+  instances[i] = {
+    id: i,
+    sock: null,
+    status: "disconnected",
+    qrDataUrl: null,
+    qrRaw: null,
+    welcomeMessage: null,
+    pdfPath: null,
+  };
+}
+
+function getInstance(id) {
+  return instances[id] || null;
+}
+
+function getAllStatus() {
+  return Object.values(instances).map(({ id, status, qrDataUrl }) => ({ id, status, qrDataUrl }));
+}
+
+function getInstanceStatus(id) {
+  const inst = instances[id];
+  if (!inst) return null;
+  return { id: inst.id, status: inst.status, qrDataUrl: inst.qrDataUrl };
+}
+
+function setInstanceConfig(id, { welcomeMessage, pdfPath }) {
+  if (!instances[id]) return;
+  if (welcomeMessage !== undefined) instances[id].welcomeMessage = welcomeMessage;
+  if (pdfPath !== undefined) instances[id].pdfPath = pdfPath;
+}
+
+async function sendWelcome(inst, chatId) {
+  const { getConfig } = require("./configLoader");
+  const cfg = getConfig();
+  const msg = inst.welcomeMessage || cfg.welcomeMessage;
+  const pdf = inst.pdfPath || cfg.pdfPath;
+
+  try {
+    await inst.sock.sendPresenceUpdate("composing", chatId);
+
+    if (pdf && fs.existsSync(pdf)) {
+      const fileName = path.basename(pdf);
+      await inst.sock.sendMessage(chatId, {
+        document: fs.readFileSync(pdf),
+        mimetype: "application/pdf",
+        fileName,
+        caption: msg,
+      });
+    } else {
+      await inst.sock.sendMessage(chatId, { text: msg });
+    }
+
+    await inst.sock.sendPresenceUpdate("available", chatId);
+    console.log(`[WA-${inst.id}] Welcome sent to ${chatId}`);
+  } catch (err) {
+    console.error(`[WA-${inst.id}] Error sending welcome:`, err.message);
+  }
+}
+
+async function connectWhatsapp(id) {
+  const inst = instances[id];
+  if (!inst) throw new Error(`Instance ${id} not found`);
+
+  if (inst.sock) {
+    await disconnectWhatsapp(id);
     await new Promise((r) => setTimeout(r, 1000));
   }
 
-  status = "connecting";
-  qrDataUrl = null;
-  qrRaw = null;
+  inst.status = "connecting";
+  inst.qrDataUrl = null;
+  inst.qrRaw = null;
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_PATH);
+  const authPath = getAuthPath(id);
+  const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const { version } = await fetchLatestBaileysVersion();
-  console.log(`[WA] Using WA version ${version.join(".")}`);
+  console.log(`[WA-${id}] Using WA version ${version.join(".")}`);
 
-  sock = makeWASocket({
+  inst.sock = makeWASocket({
     auth: state,
     version,
     printQRInTerminal: false,
@@ -37,45 +99,45 @@ async function connectWhatsapp() {
     connectTimeoutMs: 20000,
   });
 
-  sock.ev.on("creds.update", saveCreds);
+  inst.sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", async (update) => {
+  inst.sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      qrRaw = qr;
-      status = "qr_ready";
+      inst.qrRaw = qr;
+      inst.status = "qr_ready";
       try {
-        qrDataUrl = await qrcode.toDataURL(qr);
-        console.log("[WA] QR code ready — scan it in the panel");
+        inst.qrDataUrl = await qrcode.toDataURL(qr);
+        console.log(`[WA-${id}] QR code ready — scan it in the panel`);
       } catch (err) {
-        console.error("[WA] QR generation error:", err.message);
+        console.error(`[WA-${id}] QR generation error:`, err.message);
       }
     }
 
     if (connection === "open") {
-      status = "connected";
-      qrDataUrl = null;
-      qrRaw = null;
-      console.log("[WA] WhatsApp connected ✅");
+      inst.status = "connected";
+      inst.qrDataUrl = null;
+      inst.qrRaw = null;
+      console.log(`[WA-${id}] WhatsApp connected ✅`);
     }
 
     if (connection === "close") {
       const code = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log(`[WA] Connection closed (code ${code}), reconnect: ${shouldReconnect}`);
+      console.log(`[WA-${id}] Connection closed (code ${code}), reconnect: ${shouldReconnect}`);
 
       if (shouldReconnect) {
-        status = "connecting";
-        setTimeout(() => connectWhatsapp(), 5000);
+        inst.status = "connecting";
+        setTimeout(() => connectWhatsapp(id), 5000);
       } else {
-        status = "disconnected";
-        sock = null;
+        inst.status = "disconnected";
+        inst.sock = null;
       }
     }
   });
 
-  sock.ev.on("messages.upsert", async ({ messages: msgs, type }) => {
+  inst.sock.ev.on("messages.upsert", async ({ messages: msgs, type }) => {
     if (type !== "notify") return;
 
     for (const msg of msgs) {
@@ -83,63 +145,40 @@ async function connectWhatsapp() {
       if (!msg.message) continue;
 
       const chatId = msg.key.remoteJid;
-      const text =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        "";
-
-      if (!text) continue;
-
       const sender = msg.pushName || chatId;
-      console.log(`[WA] ${sender}: ${text}`);
+      console.log(`[WA-${id}] Message from ${sender}`);
 
-      try {
-        await sock.sendPresenceUpdate("composing", chatId);
-        const { text: responseText, products } = await processMessage(`wa_${chatId}`, text);
-        await sock.sendMessage(chatId, { text: responseText });
-
-        // Send images for products that have one (max 3)
-        const withImages = (products || []).filter((p) => p.imageUrl).slice(0, 3);
-        for (const p of withImages) {
-          const priceStr =
-            !p.price || p.price === 0
-              ? "💬 Precio a consultar"
-              : p.promoPrice
-              ? `💥 PROMO: $${p.promoPrice} ${p.currency} (antes $${p.regularPrice})`
-              : `💵 $${p.price} ${p.currency}`;
-          const stockStr = p.inStock ? `✅ En stock (${p.quantity} unid.)` : `❌ Sin stock`;
-          const caption = `📦 *${p.name}*\n${priceStr}\n${stockStr}`;
-          try {
-            await sock.sendMessage(chatId, {
-              image: { url: p.imageUrl },
-              caption,
-            });
-          } catch {
-            // skip if image fails
-          }
-        }
-
-        await sock.sendPresenceUpdate("available", chatId);
-        console.log(`[WA] → ${responseText.substring(0, 80).replace(/\n/g, " ")}...`);
-      } catch (err) {
-        console.error("[WA] Error processing message:", err.message.split("\n")[0]);
-        await sock.sendMessage(chatId, {
-          text: "Ups, ocurrió un error. Por favor intentá de nuevo en unos segundos.",
-        });
+      const phone = chatId.replace(/[^0-9]/g, "");
+      const ok = await canSend(phone);
+      if (!ok) {
+        console.log(`[WA-${id}] Cooldown active for ${phone}, skipping`);
+        continue;
       }
+      await sendWelcome(inst, chatId);
+      await markSent(phone, { name: msg.pushName || null, waInstance: id });
     }
   });
 }
 
-async function disconnectWhatsapp() {
-  if (sock) {
-    await sock.logout().catch(() => {});
-    sock = null;
+async function disconnectWhatsapp(id) {
+  const inst = instances[id];
+  if (!inst) return;
+  if (inst.sock) {
+    await inst.sock.logout().catch(() => {});
+    inst.sock = null;
   }
-  status = "disconnected";
-  qrDataUrl = null;
-  qrRaw = null;
-  console.log("[WA] Disconnected");
+  inst.status = "disconnected";
+  inst.qrDataUrl = null;
+  inst.qrRaw = null;
+  console.log(`[WA-${id}] Disconnected`);
 }
 
-module.exports = { connectWhatsapp, disconnectWhatsapp, getWhatsappStatus };
+module.exports = {
+  connectWhatsapp,
+  disconnectWhatsapp,
+  getInstanceStatus,
+  getAllStatus,
+  setInstanceConfig,
+  getInstance,
+  NUM_INSTANCES,
+};

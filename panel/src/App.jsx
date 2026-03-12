@@ -1,19 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  Bot, MessageCircle, Settings, RefreshCw, Wifi, WifiOff,
-  Save, RotateCcw, CheckCircle, XCircle, Package, Zap, MessagesSquare, ChevronLeft
+  MessageCircle, Settings, RefreshCw, Wifi, WifiOff,
+  Save, CheckCircle, XCircle, Upload, FileText, Sparkles
 } from "lucide-react";
 
 const API = "/api";
+const NUM_INSTANCES = 3;
 
-function StatusBadge({ ok, labelOn, labelOff }) {
-  return ok ? (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-      <CheckCircle size={12} /> {labelOn}
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-      <XCircle size={12} /> {labelOff}
+function StatusBadge({ status }) {
+  const map = {
+    connected:    { label: "Conectado",    cls: "bg-green-100 text-green-700" },
+    qr_ready:     { label: "Escaneá el QR", cls: "bg-yellow-100 text-yellow-700" },
+    connecting:   { label: "Conectando…",  cls: "bg-blue-100 text-blue-700" },
+    disconnected: { label: "Desconectado", cls: "bg-red-100 text-red-700" },
+  };
+  const { label, cls } = map[status] || map.disconnected;
+  const Icon = status === "connected" ? CheckCircle : XCircle;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>
+      <Icon size={12} /> {label}
     </span>
   );
 }
@@ -29,10 +34,10 @@ function Card({ children, className = "" }) {
 function Btn({ onClick, children, variant = "primary", disabled = false, className = "" }) {
   const base = "inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed";
   const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700",
+    primary:   "bg-violet-600 text-white hover:bg-violet-700",
     secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200",
-    danger: "bg-red-500 text-white hover:bg-red-600",
-    success: "bg-green-500 text-white hover:bg-green-600",
+    danger:    "bg-red-500 text-white hover:bg-red-600",
+    success:   "bg-green-500 text-white hover:bg-green-600",
   };
   return (
     <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
@@ -41,93 +46,113 @@ function Btn({ onClick, children, variant = "primary", disabled = false, classNa
   );
 }
 
+function WaInstance({ id, onToast }) {
+  const [inst, setInst] = useState({ id, status: "disconnected", qrDataUrl: null });
+
+  useEffect(() => {
+    let interval;
+    const poll = async () => {
+      try {
+        const d = await fetch(`${API}/whatsapp/${id}/qr`).then(r => r.json());
+        setInst(prev => ({ ...prev, status: d.status, qrDataUrl: d.qrDataUrl }));
+      } catch { /* ignore */ }
+    };
+    poll();
+    interval = setInterval(poll, 1500);
+    return () => clearInterval(interval);
+  }, [id]);
+
+  const connect = async () => {
+    await fetch(`${API}/whatsapp/${id}/connect`, { method: "POST" });
+  };
+
+  const disconnect = async () => {
+    await fetch(`${API}/whatsapp/${id}/disconnect`, { method: "POST" });
+  };
+
+  const colorMap = {
+    connected:    "border-green-300 bg-green-50",
+    qr_ready:     "border-yellow-300 bg-yellow-50",
+    connecting:   "border-blue-300 bg-blue-50",
+    disconnected: "border-gray-200 bg-white",
+  };
+  const borderCls = colorMap[inst.status] || colorMap.disconnected;
+
+  return (
+    <div className={`rounded-2xl border-2 p-5 transition-all ${borderCls}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 bg-white border border-gray-100 rounded-xl flex items-center justify-center shadow-sm">
+            <MessageCircle size={18} className="text-green-500" />
+          </div>
+          <div>
+            <div className="font-bold text-gray-800 text-sm">Número {id}</div>
+            <StatusBadge status={inst.status} />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {inst.status !== "connected" && (
+            <Btn onClick={connect} variant="success" className="text-xs px-3 py-1.5">
+              <Wifi size={13} /> Conectar
+            </Btn>
+          )}
+          {inst.status === "connected" && (
+            <Btn onClick={disconnect} variant="danger" className="text-xs px-3 py-1.5">
+              <WifiOff size={13} /> Desconectar
+            </Btn>
+          )}
+        </div>
+      </div>
+
+      {inst.status === "qr_ready" && inst.qrDataUrl && (
+        <div className="flex flex-col items-center mt-2">
+          <p className="text-xs text-gray-500 mb-2 text-center">
+            WhatsApp → <strong>Dispositivos vinculados</strong> → <strong>Vincular dispositivo</strong>
+          </p>
+          <div className="p-2 bg-white border-2 border-green-400 rounded-xl shadow">
+            <img src={inst.qrDataUrl} alt={`QR ${id}`} className="w-44 h-44" />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">QR se actualiza automáticamente</p>
+        </div>
+      )}
+
+      {inst.status === "connected" && (
+        <p className="text-xs text-green-600 font-medium mt-1 flex items-center gap-1">
+          <CheckCircle size={13} /> Activo — enviando mensajes de bienvenida automáticamente
+        </p>
+      )}
+
+      {inst.status === "connecting" && (
+        <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
+          <RefreshCw size={12} className="animate-spin" /> Conectando…
+        </p>
+      )}
+
+      {inst.status === "disconnected" && (
+        <p className="text-xs text-gray-400 mt-1">Presioná Conectar para vincular este número.</p>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState("numeros");
   const [toast, setToast] = useState(null);
-
-  // Stats
-  const [stats, setStats] = useState(null);
-
-  // Telegram
-  const [tgStatus, setTgStatus] = useState({ connected: false });
-  const [restarting, setRestarting] = useState(false);
-
-  // WhatsApp
-  const [waStatus, setWaStatus] = useState({ status: "disconnected", qrDataUrl: null });
-  // Chats
-  const [chats, setChats] = useState([]);
-  const [chatsLoading, setChatsLoading] = useState(true);
-  const [selectedChat, setSelectedChat] = useState(null);
-  const [chatMessages, setChatMessages] = useState([]);
-
-  // Config
   const [config, setConfig] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [pdfInfo, setPdfInfo] = useState({ fileName: null, exists: false });
+  const fileRef = useRef(null);
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   };
 
-  const fetchAll = useCallback(async () => {
-    try {
-      const [s, tg, wa, cfg, ch] = await Promise.all([
-        fetch(`${API}/stats`).then(r => r.json()),
-        fetch(`${API}/telegram/status`).then(r => r.json()),
-        fetch(`${API}/whatsapp/status`).then(r => r.json()),
-        fetch(`${API}/config`).then(r => r.json()),
-        fetch(`${API}/chats`).then(r => r.json()).catch(() => []),
-      ]);
-      setStats(s);
-      setTgStatus(tg);
-      setWaStatus(wa);
-      setConfig(prev => prev ?? cfg);
-      setChats(Array.isArray(ch) ? ch : []);
-      setChatsLoading(false);
-    } catch (e) {
-      console.error(e);
-    }
+  useEffect(() => {
+    fetch(`${API}/config`).then(r => r.json()).then(d => setConfig(d)).catch(() => {});
+    fetch(`${API}/pdf/info`).then(r => r.json()).then(d => setPdfInfo(d)).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 4000);
-    return () => clearInterval(interval);
-  }, [fetchAll]);
-
-  const openChat = async (chatId) => {
-    setSelectedChat(chatId);
-    const data = await fetch(`${API}/chats/${encodeURIComponent(chatId)}`).then(r => r.json());
-    setChatMessages(data.messages || []);
-  };
-
-  const restartTelegram = async () => {
-    setRestarting(true);
-    await fetch(`${API}/telegram/restart`, { method: "POST" });
-    setTimeout(() => { setRestarting(false); fetchAll(); }, 2000);
-  };
-
-  const connectWA = async () => {
-    await fetch(`${API}/whatsapp/connect`, { method: "POST" });
-    fetchAll();
-  };
-
-  // Fast QR polling — only when on WhatsApp tab and waiting for QR
-  useEffect(() => {
-    if (tab !== "whatsapp") return;
-    const poll = setInterval(async () => {
-      try {
-        const d = await fetch(`${API}/whatsapp/qr`).then(r => r.json());
-        setWaStatus(prev => ({ ...prev, qrDataUrl: d.qrDataUrl, status: d.status }));
-      } catch (e) { void e; }
-    }, 1000);
-    return () => clearInterval(poll);
-  }, [tab]);
-
-  const disconnectWA = async () => {
-    await fetch(`${API}/whatsapp/disconnect`, { method: "POST" });
-    fetchAll();
-  };
 
   const saveConfig = async () => {
     setSaving(true);
@@ -135,10 +160,10 @@ export default function App() {
       const r = await fetch(`${API}/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ welcomeMessage: config.welcomeMessage, businessName: config.businessName }),
       });
       const d = await r.json();
-      if (d.ok) showToast("Configuración guardada ✓");
+      if (d.ok) showToast("Mensaje guardado ✓");
       else showToast("Error al guardar", "error");
     } catch {
       showToast("Error al guardar", "error");
@@ -146,30 +171,52 @@ export default function App() {
     setSaving(false);
   };
 
+  const uploadPdf = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("pdf", file);
+      const r = await fetch(`${API}/pdf/upload`, { method: "POST", body: fd });
+      const d = await r.json();
+      if (d.ok) {
+        showToast(`PDF subido: ${d.fileName} ✓`);
+        setPdfInfo({ fileName: d.fileName, exists: true });
+      } else {
+        showToast(d.error || "Error al subir PDF", "error");
+      }
+    } catch {
+      showToast("Error al subir PDF", "error");
+    }
+    setUploading(false);
+  };
+
   const tabs = [
-    { id: "dashboard", label: "Dashboard", icon: Zap },
-    { id: "telegram", label: "Telegram", icon: Bot },
-    { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-    { id: "chats", label: "Chats", icon: MessagesSquare },
+    { id: "numeros",  label: "Números",   icon: MessageCircle },
+    { id: "mensaje",  label: "Mensaje",   icon: Sparkles },
+    { id: "pdf",      label: "PDF Precios", icon: FileText },
+    { id: "ajustes",  label: "Ajustes",   icon: Settings },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-white text-sm font-medium transition-all ${toast.type === "error" ? "bg-red-500" : "bg-green-500"}`}>
           {toast.msg}
         </div>
       )}
 
-      {/* Sidebar */}
       <div className="flex min-h-screen">
+        {/* Sidebar */}
         <aside className="w-56 bg-white border-r border-gray-100 flex flex-col py-6 px-3 fixed h-full">
           <div className="flex items-center gap-2 px-3 mb-8">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Bot size={18} className="text-white" />
+            <div className="w-8 h-8 bg-violet-600 rounded-lg flex items-center justify-center">
+              <Sparkles size={16} className="text-white" />
             </div>
-            <span className="font-bold text-gray-900">AltaBot</span>
+            <div>
+              <div className="font-bold text-gray-900 text-sm leading-tight">TechStore</div>
+              <div className="text-xs text-gray-400">Panel de control</div>
+            </div>
           </div>
           <nav className="flex flex-col gap-1">
             {tabs.map(t => (
@@ -177,9 +224,7 @@ export default function App() {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  tab === t.id
-                    ? "bg-indigo-50 text-indigo-700"
-                    : "text-gray-600 hover:bg-gray-50"
+                  tab === t.id ? "bg-violet-50 text-violet-700" : "text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 <t.icon size={17} />
@@ -187,265 +232,126 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div className="mt-auto px-3 text-xs text-gray-400">v1.0 · AltaBot Panel</div>
+          <div className="mt-auto px-3 text-xs text-gray-400">v2.0 · TechStore Bot</div>
         </aside>
 
         {/* Main */}
         <main className="ml-56 flex-1 p-8">
-          {/* DASHBOARD */}
-          {tab === "dashboard" && (
+
+          {/* NÚMEROS — 3 instancias */}
+          {tab === "numeros" && (
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">Dashboard</h1>
-              <p className="text-gray-500 text-sm mb-6">Estado general del sistema</p>
-
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <Card>
-                  <div className="text-3xl font-bold text-indigo-600">{stats?.totalProducts ?? "—"}</div>
-                  <div className="text-sm text-gray-500 mt-1 flex items-center gap-1"><Package size={14}/> Productos en DB</div>
-                </Card>
-                <Card>
-                  <div className="text-3xl font-bold text-green-600">{stats?.inStock ?? "—"}</div>
-                  <div className="text-sm text-gray-500 mt-1">Con stock disponible</div>
-                </Card>
-                <Card>
-                  <div className="text-3xl font-bold text-blue-600">{stats?.withPrice ?? "—"}</div>
-                  <div className="text-sm text-gray-500 mt-1">Con precio cargado</div>
-                </Card>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">Números de WhatsApp</h1>
+              <p className="text-gray-500 text-sm mb-6">
+                Podés conectar hasta <strong>3 números</strong> simultáneamente. Cada uno enviará el mensaje de bienvenida + PDF a cualquier persona que les escriba.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {Array.from({ length: NUM_INSTANCES }, (_, i) => i + 1).map(id => (
+                  <WaInstance key={id} id={id} onToast={showToast} />
+                ))}
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Card>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 font-semibold text-gray-800"><Bot size={18}/> Telegram</div>
-                    <StatusBadge ok={tgStatus.connected} labelOn="Conectado" labelOff="Desconectado" />
-                  </div>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Bot{" "}
-                    {tgStatus.username ? (
-                      <a href={`https://t.me/${tgStatus.username.replace("@","")}`} target="_blank" rel="noreferrer" className="text-sky-600 font-semibold hover:underline">{tgStatus.username}</a>
-                    ) : <strong>@buebasbotbot</strong>}
-                    {" "}— responde consultas por Telegram
-                  </p>
-                  <Btn onClick={restartTelegram} disabled={restarting} variant="secondary">
-                    <RefreshCw size={15} className={restarting ? "animate-spin" : ""} />
-                    {restarting ? "Reiniciando..." : "Reiniciar bot"}
-                  </Btn>
-                </Card>
-                <Card>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 font-semibold text-gray-800"><MessageCircle size={18}/> WhatsApp</div>
-                    <StatusBadge ok={waStatus.status === "connected"} labelOn="Conectado" labelOff={waStatus.status === "qr_ready" ? "Esperando QR" : "Desconectado"} />
-                  </div>
-                  <p className="text-sm text-gray-500 mb-4">
-                    {waStatus.status === "connected" ? "WhatsApp activo y respondiendo clientes." : "Conectá WhatsApp escaneando el QR."}
-                  </p>
-                  <Btn onClick={() => setTab("whatsapp")} variant="secondary">
-                    <MessageCircle size={15}/> Ir a WhatsApp
-                  </Btn>
-                </Card>
-              </div>
+              <p className="text-xs text-gray-400 mt-5">
+                ⚠️ Si el servidor se reinicia, vas a tener que escanear los QR nuevamente.
+              </p>
             </div>
           )}
 
-          {/* TELEGRAM */}
-          {tab === "telegram" && (
+          {/* MENSAJE */}
+          {tab === "mensaje" && (
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">Telegram</h1>
-              <p className="text-gray-500 text-sm mb-6">Configuración y estado del bot de Telegram</p>
-              <Card className="max-w-xl">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
-                    <Bot size={22} className="text-sky-600" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-gray-900">
-                      {tgStatus.username ? (
-                        <a href={`https://t.me/${tgStatus.username.replace("@","")}`} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline">{tgStatus.username}</a>
-                      ) : "Bot de Telegram"}
-                    </div>
-                    <StatusBadge ok={tgStatus.connected} labelOn="Conectado" labelOff="Desconectado" />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Token del bot</label>
-                  <input
-                    type="password"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="8684980516:AAH..."
-                    value={config?.telegramToken || ""}
-                    onChange={e => setConfig(c => ({ ...c, telegramToken: e.target.value }))}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Obtenido de @BotFather. Se guarda encriptado.</p>
-                </div>
-
-                <div className="flex gap-3">
-                  <Btn onClick={saveConfig} disabled={saving}>
-                    <Save size={15}/> {saving ? "Guardando..." : "Guardar token"}
-                  </Btn>
-                  <Btn onClick={restartTelegram} disabled={restarting} variant="secondary">
-                    <RefreshCw size={15} className={restarting ? "animate-spin" : ""} />
-                    {restarting ? "Reiniciando..." : "Reiniciar"}
-                  </Btn>
-                </div>
-              </Card>
-            </div>
-          )}
-
-          {/* WHATSAPP */}
-          {tab === "whatsapp" && (
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">WhatsApp</h1>
-              <p className="text-gray-500 text-sm mb-6">Conectá tu WhatsApp escaneando el código QR</p>
-              <Card className="max-w-md">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                    <MessageCircle size={22} className="text-green-600" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-gray-900">Estado de WhatsApp</div>
-                    <StatusBadge
-                      ok={waStatus.status === "connected"}
-                      labelOn="Conectado"
-                      labelOff={
-                        waStatus.status === "qr_ready" ? "Escaneá el QR"
-                        : waStatus.status === "connecting" ? "Conectando..."
-                        : "Desconectado"
-                      }
-                    />
-                  </div>
-                </div>
-
-                {waStatus.status === "qr_ready" && waStatus.qrDataUrl && (
-                  <div className="mb-5 flex flex-col items-center">
-                    <p className="text-sm text-gray-600 mb-3 text-center">Abrí WhatsApp en tu celular → <strong>Dispositivos vinculados</strong> → <strong>Vincular dispositivo</strong></p>
-                    <div className="p-3 bg-white border-2 border-green-400 rounded-2xl shadow-md">
-                      <img src={waStatus.qrDataUrl} alt="QR WhatsApp" className="w-52 h-52" />
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2">El QR se actualiza automáticamente</p>
-                  </div>
-                )}
-
-                {waStatus.status === "connected" && (
-                  <div className="mb-5 flex items-center gap-2 text-green-600 font-semibold">
-                    <Wifi size={20}/> WhatsApp conectado y activo ✓
-                  </div>
-                )}
-
-                {waStatus.status === "connecting" && (
-                  <div className="mb-5 text-sm text-gray-500 flex items-center gap-2">
-                    <RefreshCw size={15} className="animate-spin"/> Conectando...
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  {waStatus.status !== "connected" && (
-                    <Btn onClick={connectWA} variant="success">
-                      <Wifi size={15}/> Conectar WhatsApp
-                    </Btn>
-                  )}
-                  {waStatus.status === "connected" && (
-                    <Btn onClick={disconnectWA} variant="danger">
-                      <WifiOff size={15}/> Desconectar
-                    </Btn>
-                  )}
-                </div>
-
-                <p className="text-xs text-gray-400 mt-4">
-                  ⚠️ Si el bot se apaga, vas a tener que volver a escanear el QR.
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">Mensaje de bienvenida</h1>
+              <p className="text-gray-500 text-sm mb-6">
+                Este mensaje se envía automáticamente a cada persona que le escriba a cualquiera de tus números. Se adjunta el PDF de precios si está cargado.
+              </p>
+              <Card className="max-w-2xl">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Texto del mensaje</label>
+                <textarea
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none"
+                  rows={10}
+                  placeholder="Escribí el mensaje de bienvenida..."
+                  value={config?.welcomeMessage || ""}
+                  onChange={e => setConfig(c => ({ ...c, welcomeMessage: e.target.value }))}
+                />
+                <p className="text-xs text-gray-400 mt-1 mb-4">
+                  Podés usar *negrita*, _cursiva_ — formato WhatsApp estándar.
                 </p>
+                <Btn onClick={saveConfig} disabled={saving || !config}>
+                  <Save size={15} /> {saving ? "Guardando…" : "Guardar mensaje"}
+                </Btn>
+              </Card>
+
+              <Card className="max-w-2xl mt-5 bg-gray-50 border-dashed">
+                <div className="text-sm font-semibold text-gray-600 mb-2">Vista previa</div>
+                <div className="bg-white rounded-xl p-4 border border-gray-100 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {config?.welcomeMessage || <span className="text-gray-300 italic">Sin mensaje configurado…</span>}
+                </div>
               </Card>
             </div>
           )}
 
-          {/* CHATS */}
-          {tab === "chats" && (
+          {/* PDF */}
+          {tab === "pdf" && (
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">Chats</h1>
-              <p className="text-gray-500 text-sm mb-6">Conversaciones de la IA con tus clientes</p>
-
-              {!selectedChat ? (
-                <div className="grid grid-cols-2 gap-5">
-                  {/* Telegram */}
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-                      <Bot size={15} className="text-sky-500"/>
-                      <h2 className="font-semibold text-gray-800 text-sm">Telegram</h2>
-                      <span className="ml-auto text-xs text-gray-400">{chats.filter(c => c.channel !== "whatsapp").length} chats</span>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">PDF Lista de precios</h1>
+              <p className="text-gray-500 text-sm mb-6">
+                Este PDF se adjunta automáticamente al mensaje de bienvenida. Subí uno nuevo para reemplazar el actual.
+              </p>
+              <Card className="max-w-lg">
+                <div className="flex items-center gap-3 mb-5 p-4 rounded-xl border border-gray-100 bg-gray-50">
+                  <FileText size={28} className={pdfInfo.exists ? "text-violet-500" : "text-gray-300"} />
+                  <div>
+                    <div className="font-semibold text-sm text-gray-700">
+                      {pdfInfo.exists ? pdfInfo.fileName : "Sin PDF cargado"}
                     </div>
-                    {chatsLoading && <div className="px-4 py-8 text-center text-sm text-gray-400"><RefreshCw size={14} className="animate-spin mx-auto mb-1"/>Cargando...</div>}
-                    {!chatsLoading && chats.filter(c => c.channel !== "whatsapp").length === 0 && (
-                      <div className="px-4 py-8 text-center text-sm text-gray-400">Sin chats de Telegram aún.</div>
-                    )}
-                    {chats.filter(c => c.channel !== "whatsapp").map(c => (
-                      <button key={c.chatId} onClick={() => openChat(c.chatId)}
-                        className="w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-sky-50 transition-all">
-                        <div className="font-medium text-sm text-gray-800 truncate">{c.chatId}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {c.updatedAt ? new Date(c.updatedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : ""}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* WhatsApp */}
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-                      <MessageCircle size={15} className="text-green-500"/>
-                      <h2 className="font-semibold text-gray-800 text-sm">WhatsApp</h2>
-                      <span className="ml-auto text-xs text-gray-400">{chats.filter(c => c.channel === "whatsapp").length} chats</span>
+                    <div className="text-xs text-gray-400">
+                      {pdfInfo.exists ? "PDF activo — se adjunta en cada bienvenida" : "Subí un PDF para adjuntarlo automáticamente"}
                     </div>
-                    {chatsLoading && <div className="px-4 py-8 text-center text-sm text-gray-400"><RefreshCw size={14} className="animate-spin mx-auto mb-1"/>Cargando...</div>}
-                    {!chatsLoading && chats.filter(c => c.channel === "whatsapp").length === 0 && (
-                      <div className="px-4 py-8 text-center text-sm text-gray-400">Sin chats de WhatsApp aún.</div>
-                    )}
-                    {chats.filter(c => c.channel === "whatsapp").map(c => (
-                      <button key={c.chatId} onClick={() => openChat(c.chatId)}
-                        className="w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-green-50 transition-all">
-                        <div className="font-medium text-sm text-gray-800 truncate">{c.chatId.replace("wa_", "")}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {c.updatedAt ? new Date(c.updatedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : ""}
-                        </div>
-                      </button>
-                    ))}
                   </div>
+                  {pdfInfo.exists && (
+                    <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                      <CheckCircle size={11} /> Activo
+                    </span>
+                  )}
                 </div>
-              ) : (
-                /* Message viewer */
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col" style={{height: "calc(100vh - 160px)"}}>
-                  <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-                    <button onClick={() => { setSelectedChat(null); setChatMessages([]); }} className="text-gray-400 hover:text-gray-600 mr-1">
-                      <ChevronLeft size={18}/>
-                    </button>
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${selectedChat.startsWith("wa_") ? "bg-green-100" : "bg-sky-100"}`}>
-                      {selectedChat.startsWith("wa_") ? <MessageCircle size={13} className="text-green-600"/> : <Bot size={13} className="text-sky-600"/>}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-800 text-sm">{selectedChat.replace("wa_", "")}</div>
-                      <div className="text-xs text-gray-400">{chatMessages.length} mensajes</div>
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-                    {chatMessages.length === 0 && (
-                      <div className="text-center text-sm text-gray-400 mt-10">No hay mensajes en esta conversación.</div>
-                    )}
-                    {chatMessages.map((m, i) => (
-                      <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
-                          m.role === "user"
-                            ? "bg-indigo-600 text-white rounded-br-sm"
-                            : "bg-gray-100 text-gray-800 rounded-bl-sm"
-                        }`}>
-                          {m.text}
-                          <div className={`text-xs mt-1 opacity-60 ${m.role === "user" ? "text-right" : ""}`}>
-                            {m.ts ? new Date(m.ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : ""}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={e => uploadPdf(e.target.files?.[0])}
+                />
+                <Btn
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  variant="primary"
+                >
+                  <Upload size={15} />
+                  {uploading ? "Subiendo…" : pdfInfo.exists ? "Reemplazar PDF" : "Subir PDF"}
+                </Btn>
+                <p className="text-xs text-gray-400 mt-3">Tamaño máximo: 20 MB</p>
+              </Card>
+            </div>
+          )}
+
+          {/* AJUSTES */}
+          {tab === "ajustes" && (
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">Ajustes</h1>
+              <p className="text-gray-500 text-sm mb-6">Configuración general del negocio</p>
+              <Card className="max-w-lg">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Nombre del negocio</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  value={config?.businessName || ""}
+                  onChange={e => setConfig(c => ({ ...c, businessName: e.target.value }))}
+                  placeholder="Tech Stories"
+                />
+                <Btn onClick={saveConfig} disabled={saving || !config}>
+                  <Save size={15} /> {saving ? "Guardando…" : "Guardar"}
+                </Btn>
+              </Card>
             </div>
           )}
 

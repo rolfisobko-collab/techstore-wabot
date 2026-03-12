@@ -1,122 +1,105 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const { getDb } = require("./db");
+const fs = require("fs");
+const multer = require("multer");
 
 const router = express.Router();
 
+const UPLOADS_DIR = path.join(__dirname, "../data/uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const name = `pricelist_${Date.now()}${path.extname(file.originalname)}`;
+    cb(null, name);
+  },
+});
+const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+
 // ── Config ──────────────────────────────────────────────────
-router.get("/config", async (req, res) => {
-  try {
-    const { getConfig } = require("./configLoader");
-    const defaults = getConfig();
-    const db = await getDb();
-    const doc = await db.collection("nova_config").findOne({ _id: "bot_config" });
-    res.json({ ...defaults, ...(doc || {}), _id: undefined });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.get("/config", (req, res) => {
+  const { getConfig } = require("./configLoader");
+  res.json(getConfig());
 });
 
-router.post("/config", async (req, res) => {
+router.post("/config", (req, res) => {
   try {
-    const db = await getDb();
-    const update = { ...req.body, _id: "bot_config", updatedAt: new Date() };
-    await db.collection("nova_config").replaceOne(
-      { _id: "bot_config" },
-      update,
-      { upsert: true }
-    );
-    // Hot-reload config in memory so bot uses new settings immediately
-    const { reloadConfig } = require("./configLoader");
-    await reloadConfig();
+    const { saveConfig } = require("./configLoader");
+    const allowed = ["welcomeMessage", "businessName"];
+    const updates = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) updates[k] = req.body[k];
+    }
+    saveConfig(updates);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Telegram status ─────────────────────────────────────────
-router.get("/telegram/status", (req, res) => {
-  const { getTelegramStatus } = require("./bot");
-  res.json(getTelegramStatus());
-});
-
-router.post("/telegram/restart", async (req, res) => {
+// ── PDF upload ───────────────────────────────────────────────
+router.post("/pdf/upload", upload.single("pdf"), (req, res) => {
   try {
-    const { restartBot } = require("./bot");
-    await restartBot();
-    res.json({ ok: true });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const { saveConfig } = require("./configLoader");
+    saveConfig({ pdfPath: req.file.path });
+    res.json({ ok: true, fileName: req.file.filename });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── WhatsApp status & QR ────────────────────────────────────
+router.get("/pdf/info", (req, res) => {
+  const { getConfig } = require("./configLoader");
+  const { pdfPath } = getConfig();
+  if (pdfPath && fs.existsSync(pdfPath)) {
+    res.json({ fileName: path.basename(pdfPath), exists: true });
+  } else {
+    res.json({ fileName: null, exists: false });
+  }
+});
+
+// ── WhatsApp instances ───────────────────────────────────────
 router.get("/whatsapp/status", (req, res) => {
-  const { getWhatsappStatus } = require("./whatsapp");
-  res.json(getWhatsappStatus());
+  const { getAllStatus } = require("./whatsapp");
+  res.json(getAllStatus());
 });
 
-router.post("/whatsapp/connect", async (req, res) => {
+router.get("/whatsapp/:id/status", (req, res) => {
+  const { getInstanceStatus } = require("./whatsapp");
+  const id = parseInt(req.params.id);
+  const s = getInstanceStatus(id);
+  if (!s) return res.status(404).json({ error: "Instance not found" });
+  res.json(s);
+});
+
+router.get("/whatsapp/:id/qr", (req, res) => {
+  const { getInstanceStatus } = require("./whatsapp");
+  const id = parseInt(req.params.id);
+  const s = getInstanceStatus(id);
+  if (!s) return res.status(404).json({ error: "Instance not found" });
+  res.json({ qrDataUrl: s.qrDataUrl, status: s.status });
+});
+
+router.post("/whatsapp/:id/connect", async (req, res) => {
   try {
     const { connectWhatsapp } = require("./whatsapp");
-    await connectWhatsapp();
+    const id = parseInt(req.params.id);
+    await connectWhatsapp(id);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get("/whatsapp/qr", (req, res) => {
-  const { getWhatsappStatus } = require("./whatsapp");
-  const { qrDataUrl, status } = getWhatsappStatus();
-  res.json({ qrDataUrl, status });
-});
-
-router.post("/whatsapp/disconnect", async (req, res) => {
+router.post("/whatsapp/:id/disconnect", async (req, res) => {
   try {
     const { disconnectWhatsapp } = require("./whatsapp");
-    await disconnectWhatsapp();
+    const id = parseInt(req.params.id);
+    await disconnectWhatsapp(id);
     res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Chats ────────────────────────────────────────────────────
-router.get("/chats", async (req, res) => {
-  try {
-    const db = await getDb();
-    const chats = await db.collection("nova_chats")
-      .find({}, { projection: { messages: 0 } })
-      .sort({ updatedAt: -1 })
-      .limit(50)
-      .toArray();
-    res.json(chats);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get("/chats/:chatId", async (req, res) => {
-  try {
-    const db = await getDb();
-    const chat = await db.collection("nova_chats").findOne({ chatId: req.params.chatId });
-    res.json(chat || { messages: [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Stats ────────────────────────────────────────────────────
-router.get("/stats", async (req, res) => {
-  try {
-    const db = await getDb();
-    const totalProducts = await db.collection("stock").countDocuments();
-    const inStock = await db.collection("stock").countDocuments({ quantity: { $gt: 0 } });
-    const withPrice = await db.collection("stock").countDocuments({ price: { $gt: 0 } });
-    res.json({ totalProducts, inStock, withPrice });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

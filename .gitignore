@@ -3,4 +3,5 @@ panel/node_modules/
 panel/dist/
 .env
 *.log
-.wa_auth/
+.wa_auth*/
+data/uploads/

@@ -1,37 +1,37 @@
-const { getDb } = require("./db");
+const path = require("path");
+const fs = require("fs");
 const defaultConfig = require("./config");
+
+const CONFIG_FILE = path.join(__dirname, "../data/config.json");
 
 let activeConfig = { ...defaultConfig };
 
-/**
- * Load config from MongoDB, falling back to default config.js values.
- */
-async function reloadConfig() {
+function reloadConfig() {
   try {
-    const db = await getDb();
-    const doc = await db.collection("nova_config").findOne({ _id: "bot_config" });
-    if (doc) {
-      activeConfig = {
-        ...defaultConfig,
-        businessName: doc.businessName || defaultConfig.businessName,
-        businessDescription: doc.businessDescription || defaultConfig.businessDescription,
-        welcomeMessage: doc.welcomeMessage || defaultConfig.welcomeMessage,
-        systemPrompt: doc.systemPrompt || defaultConfig.systemPrompt,
-        currency: doc.currency || defaultConfig.currency,
-        maxProductsInResponse: doc.maxProductsInResponse || defaultConfig.maxProductsInResponse,
-        maxProductsFromDB: doc.maxProductsFromDB || defaultConfig.maxProductsFromDB,
-        telegramToken: doc.telegramToken || process.env.TELEGRAM_TOKEN,
-        groqApiKey: doc.groqApiKey || process.env.GROQ_API_KEY,
-        mongodbUri: doc.mongodbUri || process.env.MONGODB_URI,
-      };
-      console.log("[Config] Loaded from MongoDB");
+    if (fs.existsSync(CONFIG_FILE)) {
+      const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+      activeConfig = { ...defaultConfig, ...saved };
+      console.log("[Config] Loaded from data/config.json");
     } else {
-      activeConfig = { ...defaultConfig, telegramToken: process.env.TELEGRAM_TOKEN, groqApiKey: process.env.GROQ_API_KEY, mongodbUri: process.env.MONGODB_URI };
+      activeConfig = { ...defaultConfig };
       console.log("[Config] Using default config.js");
     }
   } catch (err) {
-    console.error("[Config] Failed to load from DB, using defaults:", err.message);
-    activeConfig = { ...defaultConfig, telegramToken: process.env.TELEGRAM_TOKEN, groqApiKey: process.env.GROQ_API_KEY, mongodbUri: process.env.MONGODB_URI };
+    console.error("[Config] Failed to load saved config, using defaults:", err.message);
+    activeConfig = { ...defaultConfig };
+  }
+}
+
+function saveConfig(updates) {
+  try {
+    const dir = path.dirname(CONFIG_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    activeConfig = { ...activeConfig, ...updates };
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(activeConfig, null, 2), "utf8");
+    console.log("[Config] Saved to data/config.json");
+  } catch (err) {
+    console.error("[Config] Failed to save config:", err.message);
+    throw err;
   }
 }
 
@@ -39,4 +39,4 @@ function getConfig() {
   return activeConfig;
 }
 
-module.exports = { reloadConfig, getConfig };
+module.exports = { reloadConfig, saveConfig, getConfig };

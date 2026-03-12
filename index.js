@@ -1,39 +1,30 @@
 require("dotenv").config();
-const { connect } = require("./src/db");
 const { reloadConfig } = require("./src/configLoader");
-const { startBot } = require("./src/bot");
 const { createApp } = require("./src/api");
+const { initFirebase } = require("./src/firebase");
 
-const PORT = process.env.PORT || 8000; // v3
+const PORT = process.env.PORT || 8000;
 
 async function main() {
-  console.log("[App] Starting IA Chat Bot...");
+  console.log("[App] Starting TechStore WhatsApp Bot...");
 
-  await connect();
-  await reloadConfig();
+  initFirebase();
+  reloadConfig();
 
-  // Start Express API + panel
   const app = createApp();
   app.listen(PORT, () => {
     console.log(`[App] Panel running at http://localhost:${PORT}`);
   });
 
-  // Start Telegram bot
-  await startBot();
-
-  console.log("[App] Bot is running.");
+  console.log("[App] Ready. Connect WhatsApp numbers from the panel.");
 }
 
-process.on("SIGINT", async () => {
+process.on("SIGINT", () => {
   console.log("\n[App] Shutting down...");
-  const { close } = require("./src/db");
-  await close();
   process.exit(0);
 });
 
-process.on("SIGTERM", async () => {
-  const { close } = require("./src/db");
-  await close();
+process.on("SIGTERM", () => {
   process.exit(0);
 });
 

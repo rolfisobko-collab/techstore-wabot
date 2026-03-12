@@ -1,7 +1,7 @@
 {
-  "name": "iachat",
-  "version": "1.0.0",
-  "description": "AltaBot - Telegram & WhatsApp AI bot with admin panel",
+  "name": "techstories-wabot",
+  "version": "2.0.0",
+  "description": "Tech Stories - WhatsApp Welcome Bot with admin panel",
   "main": "index.js",
   "scripts": {
     "build": "cd panel && npm install && npm run build",
@@ -16,13 +16,11 @@
   "license": "ISC",
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
-    "axios": "^1.13.5",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "groq-sdk": "^0.37.0",
-    "mongodb": "^7.1.0",
-    "node-telegram-bot-api": "^0.67.0",
+    "firebase": "^12.10.0",
+    "multer": "^2.1.1",
     "qrcode": "^1.5.4"
   }
 }
