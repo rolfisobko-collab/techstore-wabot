@@ -16,7 +16,7 @@ router.get("/config", (req, res) => {
 router.post("/config", async (req, res) => {
   try {
     const { saveConfig } = require("./configLoader");
-    const allowed = ["welcomeMessage", "businessName"];
+    const allowed = ["welcomeMessage", "businessName", "pdfUrl", "pdfName"];
     const updates = {};
     for (const k of allowed) {
       if (req.body[k] !== undefined) updates[k] = req.body[k];

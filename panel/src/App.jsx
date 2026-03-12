@@ -46,7 +46,7 @@ function Btn({ onClick, children, variant = "primary", disabled = false, classNa
   );
 }
 
-function WaInstance({ id, onToast }) {
+function WaInstance({ id }) {
   const [inst, setInst] = useState({ id, status: "disconnected", qrDataUrl: null });
 
   useEffect(() => {
@@ -190,6 +190,21 @@ export default function App() {
       showToast(`Error: ${err.message}`, "error");
     } finally {
       setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const clearPdf = async () => {
+    try {
+      await fetch(`${API}/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfUrl: "", pdfName: "" }),
+      });
+      setPdfInfo({ fileName: null, exists: false });
+      showToast("PDF eliminado");
+    } catch {
+      showToast("Error al eliminar PDF", "error");
     }
   };
 
@@ -321,16 +336,23 @@ export default function App() {
                   type="file"
                   accept="application/pdf"
                   className="hidden"
-                  onChange={e => uploadPdf(e.target.files?.[0])}
+                  onChange={e => { uploadPdf(e.target.files?.[0]); }}
                 />
-                <Btn
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  variant="primary"
-                >
-                  <Upload size={15} />
-                  {uploading ? "Subiendo…" : pdfInfo.exists ? "Reemplazar PDF" : "Subir PDF"}
-                </Btn>
+                <div className="flex gap-2">
+                  <Btn
+                    onClick={() => { if (fileRef.current) fileRef.current.value = ""; fileRef.current?.click(); }}
+                    disabled={uploading}
+                    variant="primary"
+                  >
+                    <Upload size={15} />
+                    {uploading ? "Subiendo…" : pdfInfo.exists ? "Reemplazar PDF" : "Subir PDF"}
+                  </Btn>
+                  {pdfInfo.exists && (
+                    <Btn onClick={clearPdf} variant="danger">
+                      Eliminar
+                    </Btn>
+                  )}
+                </div>
                 <p className="text-xs text-gray-400 mt-3">Tamaño máximo: 20 MB</p>
               </Card>
             </div>
