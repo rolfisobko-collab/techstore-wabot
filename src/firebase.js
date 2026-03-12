@@ -40,8 +40,12 @@ async function getRemoteConfig() {
 
 async function saveRemoteConfig(updates) {
   if (!db) throw new Error("Firestore not initialized");
+  const clean = {};
+  for (const [k, v] of Object.entries(updates)) {
+    clean[k] = v === undefined ? null : v;
+  }
   const ref = doc(db, "config", "main");
-  await setDoc(ref, { ...updates, updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(ref, { ...clean, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 async function canSend(phone) {

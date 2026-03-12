@@ -199,7 +199,7 @@ export default function App() {
       await fetch(`${API}/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdfUrl: "", pdfName: "" }),
+        body: JSON.stringify({ pdfUrl: null, pdfName: null }),
       });
       setPdfInfo({ fileName: null, exists: false });
       showToast("PDF eliminado");
