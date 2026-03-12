@@ -103,11 +103,18 @@ function createApp() {
   app.use("/api", router);
 
   // Serve frontend in production
+  const fs = require("fs");
   const distPath = path.join(__dirname, "../panel/dist");
+  const indexPath = path.join(distPath, "index.html");
   console.log("[App] Serving frontend from:", distPath);
+  console.log("[App] index.html exists:", fs.existsSync(indexPath));
   app.use(express.static(distPath));
   app.get("/{*splat}", (req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(200).send("<h1>TechStore Bot</h1><p>Panel building... refresh in 30 seconds.</p>");
+    }
   });
 
   return app;
