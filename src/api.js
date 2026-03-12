@@ -106,7 +106,7 @@ function createApp() {
   const distPath = path.join(__dirname, "../panel/dist");
   console.log("[App] Serving frontend from:", distPath);
   app.use(express.static(distPath));
-  app.get("*", (req, res) => {
+  app.get("/{*splat}", (req, res) => {
     res.sendFile(path.join(distPath, "index.html"));
   });
 
