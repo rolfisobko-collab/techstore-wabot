@@ -48,17 +48,29 @@ async function sendWelcome(inst, chatId) {
   const { getConfig } = require("./configLoader");
   const cfg = getConfig();
   const msg = inst.welcomeMessage || cfg.welcomeMessage;
-  const pdf = inst.pdfPath || cfg.pdfPath;
+  const pdfUrl = cfg.pdfUrl || null;
+  const pdfName = cfg.pdfName || "lista-precios.pdf";
 
   try {
     await inst.sock.sendPresenceUpdate("composing", chatId);
 
-    if (pdf && fs.existsSync(pdf)) {
-      const fileName = path.basename(pdf);
+    if (pdfUrl) {
+      const https = require("https");
+      const http = require("http");
+      const pdfBuffer = await new Promise((resolve, reject) => {
+        const client = pdfUrl.startsWith("https") ? https : http;
+        client.get(pdfUrl, (res) => {
+          const chunks = [];
+          res.on("data", (c) => chunks.push(c));
+          res.on("end", () => resolve(Buffer.concat(chunks)));
+          res.on("error", reject);
+        }).on("error", reject);
+      });
+
       await inst.sock.sendMessage(chatId, {
-        document: fs.readFileSync(pdf),
+        document: pdfBuffer,
         mimetype: "application/pdf",
-        fileName,
+        fileName: pdfName,
         caption: msg,
       });
     } else {

@@ -9,7 +9,7 @@ async function main() {
   console.log("[App] Starting TechStore WhatsApp Bot...");
 
   initFirebase();
-  reloadConfig();
+  await reloadConfig();
 
   const app = createApp();
   app.listen(PORT, () => {

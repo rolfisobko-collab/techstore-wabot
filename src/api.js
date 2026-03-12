@@ -1,22 +1,11 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const fs = require("fs");
 const multer = require("multer");
 
 const router = express.Router();
 
-const UPLOADS_DIR = path.join(__dirname, "../data/uploads");
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const name = `pricelist_${Date.now()}${path.extname(file.originalname)}`;
-    cb(null, name);
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ── Config ──────────────────────────────────────────────────
 router.get("/config", (req, res) => {
@@ -24,7 +13,7 @@ router.get("/config", (req, res) => {
   res.json(getConfig());
 });
 
-router.post("/config", (req, res) => {
+router.post("/config", async (req, res) => {
   try {
     const { saveConfig } = require("./configLoader");
     const allowed = ["welcomeMessage", "businessName"];
@@ -32,7 +21,7 @@ router.post("/config", (req, res) => {
     for (const k of allowed) {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
     }
-    saveConfig(updates);
+    await saveConfig(updates);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -40,12 +29,15 @@ router.post("/config", (req, res) => {
 });
 
 // ── PDF upload ───────────────────────────────────────────────
-router.post("/pdf/upload", upload.single("pdf"), (req, res) => {
+router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const { uploadPdfToStorage } = require("./firebase");
     const { saveConfig } = require("./configLoader");
-    saveConfig({ pdfPath: req.file.path });
-    res.json({ ok: true, fileName: req.file.filename });
+    const filename = `pricelist_${Date.now()}.pdf`;
+    const url = await uploadPdfToStorage(req.file.buffer, filename);
+    await saveConfig({ pdfUrl: url, pdfName: req.file.originalname });
+    res.json({ ok: true, fileName: req.file.originalname, url });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -53,9 +45,9 @@ router.post("/pdf/upload", upload.single("pdf"), (req, res) => {
 
 router.get("/pdf/info", (req, res) => {
   const { getConfig } = require("./configLoader");
-  const { pdfPath } = getConfig();
-  if (pdfPath && fs.existsSync(pdfPath)) {
-    res.json({ fileName: path.basename(pdfPath), exists: true });
+  const { pdfUrl, pdfName } = getConfig();
+  if (pdfUrl) {
+    res.json({ fileName: pdfName || "pricelist.pdf", exists: true, url: pdfUrl });
   } else {
     res.json({ fileName: null, exists: false });
   }

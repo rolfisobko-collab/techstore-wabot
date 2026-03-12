@@ -1,5 +1,6 @@
 const { initializeApp, getApps } = require("firebase/app");
 const { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } = require("firebase/firestore");
+const { getStorage, ref, uploadBytes, getDownloadURL } = require("firebase/storage");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDVDoij_-CZuYzZKykc6YJZvN4kQfCm05Q",
@@ -11,6 +12,7 @@ const firebaseConfig = {
 };
 
 let db = null;
+let storage = null;
 
 const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
 
@@ -21,10 +23,36 @@ function initFirebase() {
   try {
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     db = getFirestore(app);
-    console.log("[Firebase] Firestore connected ✅");
+    storage = getStorage(app);
+    console.log("[Firebase] Firestore + Storage connected ✅");
   } catch (err) {
     console.error("[Firebase] Failed to init:", err.message);
   }
+}
+
+async function getRemoteConfig() {
+  if (!db) return null;
+  try {
+    const snap = await getDoc(doc(db, "config", "main"));
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error("[Firebase] getRemoteConfig error:", err.message);
+    return null;
+  }
+}
+
+async function saveRemoteConfig(updates) {
+  if (!db) throw new Error("Firestore not initialized");
+  const ref = doc(db, "config", "main");
+  await setDoc(ref, { ...updates, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+async function uploadPdfToStorage(buffer, filename) {
+  if (!storage) throw new Error("Storage not initialized");
+  const storageRef = ref(storage, `pdfs/${filename}`);
+  const snapshot = await uploadBytes(storageRef, buffer, { contentType: "application/pdf" });
+  const url = await getDownloadURL(snapshot.ref);
+  return url;
 }
 
 async function canSend(phone) {
@@ -84,4 +112,4 @@ async function markSent(phone, { name, waInstance } = {}) {
   }
 }
 
-module.exports = { initFirebase, canSend, markSent };
+module.exports = { initFirebase, canSend, markSent, getRemoteConfig, saveRemoteConfig, uploadPdfToStorage };
