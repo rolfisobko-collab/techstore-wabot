@@ -185,10 +185,12 @@ export default function App() {
       } else {
         showToast(d.error || "Error al subir PDF", "error");
       }
-    } catch {
-      showToast("Error al subir PDF", "error");
+    } catch (err) {
+      console.error("PDF upload error:", err);
+      showToast(`Error: ${err.message}`, "error");
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   };
 
   const tabs = [
