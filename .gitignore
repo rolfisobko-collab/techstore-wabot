@@ -5,4 +5,3 @@ panel/dist/
 *.log
 .wa_auth*/
 data/uploads/
-src/cloudinary.js
