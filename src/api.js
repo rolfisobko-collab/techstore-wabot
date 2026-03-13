@@ -5,7 +5,11 @@ const multer = require("multer");
 
 const router = express.Router();
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const fs = require("fs");
+const UPLOADS_DIR = require("path").join(__dirname, "../data/uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 // ── Config ──────────────────────────────────────────────────
 router.get("/config", (req, res) => {
@@ -32,24 +36,24 @@ router.post("/config", async (req, res) => {
 router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const { uploadPdf } = require("./cloudinary");
     const { saveConfig } = require("./configLoader");
-    const { url, fileName } = await uploadPdf(req.file.buffer, req.file.originalname);
-    await saveConfig({ pdfUrl: url, pdfName: fileName });
-    res.json({ ok: true, fileName: req.file.originalname, url });
+    const fileName = req.file.originalname;
+    const localPath = require("path").join(UPLOADS_DIR, "pricelist.pdf");
+    fs.writeFileSync(localPath, req.file.buffer);
+    console.log("[PDF] Saved locally:", localPath);
+    await saveConfig({ pdfPath: localPath, pdfName: fileName, pdfUrl: null });
+    res.json({ ok: true, fileName });
   } catch (err) {
+    console.error("[PDF] Upload error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 router.get("/pdf/info", (req, res) => {
   const { getConfig } = require("./configLoader");
-  const { pdfUrl, pdfName } = getConfig();
-  if (pdfUrl) {
-    res.json({ fileName: pdfName || "pricelist.pdf", exists: true, url: pdfUrl });
-  } else {
-    res.json({ fileName: null, exists: false });
-  }
+  const { pdfPath, pdfName } = getConfig();
+  const exists = !!(pdfPath && fs.existsSync(pdfPath));
+  res.json({ fileName: exists ? pdfName : null, exists });
 });
 
 // ── WhatsApp instances ───────────────────────────────────────

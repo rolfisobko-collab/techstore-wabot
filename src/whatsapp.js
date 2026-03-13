@@ -49,25 +49,15 @@ async function sendWelcome(inst, chatId) {
   await reloadConfig();
   const cfg = getConfig();
   const msg = cfg.welcomeMessage;
-  const pdfUrl = cfg.pdfUrl || null;
+  const pdfPath = cfg.pdfPath || null;
   const pdfName = cfg.pdfName || "lista-precios.pdf";
 
   try {
     await inst.sock.sendPresenceUpdate("composing", chatId);
 
-    if (pdfUrl) {
-      const https = require("https");
-      const http = require("http");
-      const pdfBuffer = await new Promise((resolve, reject) => {
-        const client = pdfUrl.startsWith("https") ? https : http;
-        client.get(pdfUrl, (res) => {
-          const chunks = [];
-          res.on("data", (c) => chunks.push(c));
-          res.on("end", () => resolve(Buffer.concat(chunks)));
-          res.on("error", reject);
-        }).on("error", reject);
-      });
-
+    const fs = require("fs");
+    if (pdfPath && fs.existsSync(pdfPath)) {
+      const pdfBuffer = fs.readFileSync(pdfPath);
       await inst.sock.sendMessage(chatId, {
         document: pdfBuffer,
         mimetype: "application/pdf",
@@ -90,7 +80,11 @@ async function connectWhatsapp(id) {
   if (!inst) throw new Error(`Instance ${id} not found`);
 
   if (inst.sock) {
-    await disconnectWhatsapp(id);
+    try {
+      inst.sock.ev.removeAllListeners();
+      inst.sock.ws?.close();
+    } catch {}
+    inst.sock = null;
     await new Promise((r) => setTimeout(r, 1000));
   }
 
@@ -177,7 +171,10 @@ async function disconnectWhatsapp(id) {
   const inst = instances[id];
   if (!inst) return;
   if (inst.sock) {
-    await inst.sock.logout().catch(() => {});
+    try {
+      inst.sock.ev.removeAllListeners();
+      inst.sock.ws?.close();
+    } catch {}
     inst.sock = null;
   }
   inst.status = "disconnected";
