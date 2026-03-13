@@ -131,15 +131,22 @@ async function connectWhatsapp(id) {
 
     if (connection === "close") {
       const code = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log(`[WA-${id}] Connection closed (code ${code}), reconnect: ${shouldReconnect}`);
+      const loggedOut = code === DisconnectReason.loggedOut;
+      console.log(`[WA-${id}] Connection closed (code ${code}), loggedOut: ${loggedOut}`);
 
-      if (shouldReconnect) {
-        inst.status = "connecting";
-        setTimeout(() => connectWhatsapp(id), 5000);
-      } else {
+      if (loggedOut) {
+        const authPath = getAuthPath(id);
+        try {
+          fs.rmSync(authPath, { recursive: true, force: true });
+          console.log(`[WA-${id}] Auth cleared — will need QR on next connect`);
+        } catch (e) {
+          console.error(`[WA-${id}] Could not clear auth:`, e.message);
+        }
         inst.status = "disconnected";
         inst.sock = null;
+      } else {
+        inst.status = "connecting";
+        setTimeout(() => connectWhatsapp(id), 5000);
       }
     }
   });
