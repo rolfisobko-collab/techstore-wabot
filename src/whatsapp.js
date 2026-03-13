@@ -45,9 +45,10 @@ function setInstanceConfig(id, { welcomeMessage, pdfPath }) {
 }
 
 async function sendWelcome(inst, chatId) {
-  const { getConfig } = require("./configLoader");
+  const { getConfig, reloadConfig } = require("./configLoader");
+  await reloadConfig();
   const cfg = getConfig();
-  const msg = inst.welcomeMessage || cfg.welcomeMessage;
+  const msg = cfg.welcomeMessage;
   const pdfUrl = cfg.pdfUrl || null;
   const pdfName = cfg.pdfName || "lista-precios.pdf";
 
