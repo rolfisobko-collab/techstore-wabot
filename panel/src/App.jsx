@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 const API = "/api";
-const NUM_INSTANCES = 3;
+const NUM_INSTANCES = 4;
 
 function StatusBadge({ status }) {
   const map = {
