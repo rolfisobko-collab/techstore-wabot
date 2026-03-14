@@ -2,7 +2,7 @@ const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLat
 const qrcode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
-const { canSend, markSent } = require("./firebase");
+const { canSend, markSent, saveWaSession, loadWaSession, clearWaSession } = require("./firebase");
 
 const NUM_INSTANCES = 4;
 
@@ -145,6 +145,7 @@ async function connectWhatsapp(id) {
   inst.qrRaw = null;
 
   const authPath = getAuthPath(id);
+  await loadWaSession(id, authPath);
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const { version } = await fetchLatestBaileysVersion();
   console.log(`[WA-${id}] Using WA version ${version.join(".")}`);
@@ -158,7 +159,10 @@ async function connectWhatsapp(id) {
     connectTimeoutMs: 20000,
   });
 
-  inst.sock.ev.on("creds.update", saveCreds);
+  inst.sock.ev.on("creds.update", async () => {
+    await saveCreds();
+    await saveWaSession(id, authPath);
+  });
 
   inst.sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -188,12 +192,8 @@ async function connectWhatsapp(id) {
 
       if (loggedOut) {
         const authPath = getAuthPath(id);
-        try {
-          fs.rmSync(authPath, { recursive: true, force: true });
-          console.log(`[WA-${id}] Auth cleared — will need QR on next connect`);
-        } catch (e) {
-          console.error(`[WA-${id}] Could not clear auth:`, e.message);
-        }
+        try { fs.rmSync(authPath, { recursive: true, force: true }); } catch {}
+        await clearWaSession(id);
         inst.status = "disconnected";
         inst.sock = null;
       } else {
