@@ -44,34 +44,86 @@ function setInstanceConfig(id, { welcomeMessage, pdfPath }) {
   if (pdfPath !== undefined) instances[id].pdfPath = pdfPath;
 }
 
+async function getPdfBuffer(cfg) {
+  const pdfPath = cfg.pdfPath || null;
+  const pdfUrl = cfg.pdfUrl || null;
+
+  if (pdfPath && fs.existsSync(pdfPath)) {
+    return { buffer: fs.readFileSync(pdfPath), name: cfg.pdfName || "lista-precios.pdf" };
+  }
+
+  if (pdfUrl) {
+    const https = require("https");
+    const http = require("http");
+    const buffer = await new Promise((resolve, reject) => {
+      const client = pdfUrl.startsWith("https") ? https : http;
+      client.get(pdfUrl, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          client.get(res.headers.location, (res2) => {
+            const chunks = [];
+            res2.on("data", (c) => chunks.push(c));
+            res2.on("end", () => resolve(Buffer.concat(chunks)));
+            res2.on("error", reject);
+          }).on("error", reject);
+        } else {
+          const chunks = [];
+          res.on("data", (c) => chunks.push(c));
+          res.on("end", () => resolve(Buffer.concat(chunks)));
+          res.on("error", reject);
+        }
+      }).on("error", reject);
+    });
+    return { buffer, name: cfg.pdfName || "lista-precios.pdf" };
+  }
+
+  return null;
+}
+
 async function sendWelcome(inst, chatId) {
   const { getConfig, reloadConfig } = require("./configLoader");
   await reloadConfig();
   const cfg = getConfig();
   const msg = cfg.welcomeMessage;
-  const pdfPath = cfg.pdfPath || null;
-  const pdfName = cfg.pdfName || "lista-precios.pdf";
 
   try {
     await inst.sock.sendPresenceUpdate("composing", chatId);
-
-    const fs = require("fs");
-    if (pdfPath && fs.existsSync(pdfPath)) {
-      const pdfBuffer = fs.readFileSync(pdfPath);
+    const pdf = await getPdfBuffer(cfg);
+    if (pdf) {
       await inst.sock.sendMessage(chatId, {
-        document: pdfBuffer,
+        document: pdf.buffer,
         mimetype: "application/pdf",
-        fileName: pdfName,
+        fileName: pdf.name,
         caption: msg,
       });
     } else {
       await inst.sock.sendMessage(chatId, { text: msg });
     }
-
     await inst.sock.sendPresenceUpdate("available", chatId);
     console.log(`[WA-${inst.id}] Welcome sent to ${chatId}`);
   } catch (err) {
     console.error(`[WA-${inst.id}] Error sending welcome:`, err.message);
+  }
+}
+
+async function sendCatalog(inst, chatId) {
+  const { getConfig } = require("./configLoader");
+  const cfg = getConfig();
+  try {
+    await inst.sock.sendPresenceUpdate("composing", chatId);
+    const pdf = await getPdfBuffer(cfg);
+    if (pdf) {
+      await inst.sock.sendMessage(chatId, {
+        document: pdf.buffer,
+        mimetype: "application/pdf",
+        fileName: pdf.name,
+        caption: "📋 Aquí tienes nuestro catálogo actualizado.",
+      });
+    } else {
+      await inst.sock.sendMessage(chatId, { text: "No hay catálogo disponible por el momento." });
+    }
+    await inst.sock.sendPresenceUpdate("available", chatId);
+  } catch (err) {
+    console.error(`[WA-${inst.id}] Error sending catalog:`, err.message);
   }
 }
 
@@ -161,6 +213,13 @@ async function connectWhatsapp(id) {
       const chatId = msg.key.remoteJid;
       const sender = msg.pushName || chatId;
       console.log(`[WA-${id}] Message from ${sender}`);
+
+      const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").trim().toLowerCase();
+
+      if (text === "#catalogo") {
+        await sendCatalog(inst, chatId);
+        continue;
+      }
 
       const phone = chatId.replace(/[^0-9]/g, "");
       const ok = await canSend(phone);
