@@ -1,5 +1,7 @@
 const { initializeApp, getApps } = require("firebase/app");
-const { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } = require("firebase/firestore");
+const { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteDoc } = require("firebase/firestore");
+const fs = require("fs");
+const path = require("path");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDVDoij_-CZuYzZKykc6YJZvN4kQfCm05Q",
@@ -105,4 +107,44 @@ async function markSent(phone, { name, waInstance } = {}) {
   }
 }
 
-module.exports = { initFirebase, canSend, markSent, getRemoteConfig, saveRemoteConfig };
+async function saveWaSession(id, authPath) {
+  if (!db || !fs.existsSync(authPath)) return;
+  try {
+    const files = {};
+    for (const f of fs.readdirSync(authPath)) {
+      const content = fs.readFileSync(path.join(authPath, f), "utf8");
+      files[f.replace(/\./g, "__dot__")] = content;
+    }
+    await setDoc(doc(db, "wa_sessions", String(id)), { files, updatedAt: serverTimestamp() });
+  } catch (err) {
+    console.error(`[Firebase] saveWaSession(${id}) error:`, err.message);
+  }
+}
+
+async function loadWaSession(id, authPath) {
+  if (!db) return false;
+  try {
+    const snap = await getDoc(doc(db, "wa_sessions", String(id)));
+    if (!snap.exists()) return false;
+    const { files } = snap.data();
+    if (!files || !Object.keys(files).length) return false;
+    if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
+    for (const [key, content] of Object.entries(files)) {
+      fs.writeFileSync(path.join(authPath, key.replace(/__dot__/g, ".")), content, "utf8");
+    }
+    console.log(`[Firebase] WA session ${id} restored from Firestore ✅`);
+    return true;
+  } catch (err) {
+    console.error(`[Firebase] loadWaSession(${id}) error:`, err.message);
+    return false;
+  }
+}
+
+async function clearWaSession(id) {
+  if (!db) return;
+  try {
+    await deleteDoc(doc(db, "wa_sessions", String(id)));
+  } catch {}
+}
+
+module.exports = { initFirebase, canSend, markSent, getRemoteConfig, saveRemoteConfig, saveWaSession, loadWaSession, clearWaSession };
