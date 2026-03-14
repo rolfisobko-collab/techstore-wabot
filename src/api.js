@@ -20,7 +20,7 @@ router.get("/config", (req, res) => {
 router.post("/config", async (req, res) => {
   try {
     const { saveConfig } = require("./configLoader");
-    const allowed = ["welcomeMessage", "businessName", "pdfUrl", "pdfName"];
+    const allowed = ["welcomeMessage", "businessName", "pdfPath", "pdfName"];
     const updates = {};
     for (const k of allowed) {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
@@ -110,8 +110,6 @@ function createApp() {
   const fs = require("fs");
   const distPath = path.join(__dirname, "../panel/dist");
   const indexPath = path.join(distPath, "index.html");
-  console.log("[App] Serving frontend from:", distPath);
-  console.log("[App] index.html exists:", fs.existsSync(indexPath));
   app.use(express.static(distPath));
   app.get("/{*splat}", (req, res) => {
     if (fs.existsSync(indexPath)) {
