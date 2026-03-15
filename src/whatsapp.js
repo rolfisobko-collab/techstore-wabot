@@ -132,11 +132,7 @@ async function connectWhatsapp(id) {
   if (!inst) throw new Error(`Instance ${id} not found`);
 
   if (inst.sock) {
-    try {
-      inst.sock.ev.removeAllListeners();
-      inst.sock.ws?.close();
-    } catch {}
-    inst.sock = null;
+    await disconnectWhatsapp(id);
     await new Promise((r) => setTimeout(r, 1000));
   }
 
@@ -230,10 +226,7 @@ async function disconnectWhatsapp(id) {
   const inst = instances[id];
   if (!inst) return;
   if (inst.sock) {
-    try {
-      inst.sock.ev.removeAllListeners();
-      inst.sock.ws?.close();
-    } catch {}
+    await inst.sock.logout().catch(() => {});
     inst.sock = null;
   }
   inst.status = "disconnected";
