@@ -200,6 +200,7 @@ async function connectWhatsapp(id) {
       if (!msg.message) continue;
 
       const chatId = msg.key.remoteJid;
+      if (chatId.endsWith("@g.us")) continue;
       const sender = msg.pushName || chatId;
       console.log(`[WA-${id}] Message from ${sender}`);
 
