@@ -1,5 +1,7 @@
 const { initializeApp, getApps } = require("firebase/app");
 const { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } = require("firebase/firestore");
+const fs = require("fs");
+const path = require("path");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDVDoij_-CZuYzZKykc6YJZvN4kQfCm05Q",
@@ -105,4 +107,38 @@ async function markSent(phone, { name, waInstance } = {}) {
   }
 }
 
-module.exports = { initFirebase, canSend, markSent, getRemoteConfig, saveRemoteConfig };
+async function saveWaSession(id, authPath) {
+  if (!db || !fs.existsSync(authPath)) return;
+  try {
+    const files = {};
+    for (const f of fs.readdirSync(authPath)) {
+      const full = path.join(authPath, f);
+      if (fs.statSync(full).isFile()) {
+        files[f.replace(/\./g, "__dot__")] = fs.readFileSync(full, "utf8");
+      }
+    }
+    if (!Object.keys(files).length) return;
+    await setDoc(doc(db, "wa_sessions", String(id)), { files, updatedAt: serverTimestamp() });
+  } catch (err) {
+    console.error(`[Firebase] saveWaSession(${id}):`, err.message);
+  }
+}
+
+async function loadWaSession(id, authPath) {
+  if (!db) return;
+  try {
+    const snap = await getDoc(doc(db, "wa_sessions", String(id)));
+    if (!snap.exists()) return;
+    const { files } = snap.data();
+    if (!files || !Object.keys(files).length) return;
+    if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
+    for (const [key, content] of Object.entries(files)) {
+      fs.writeFileSync(path.join(authPath, key.replace(/__dot__/g, ".")), content, "utf8");
+    }
+    console.log(`[Firebase] WA session ${id} restored ✅`);
+  } catch (err) {
+    console.error(`[Firebase] loadWaSession(${id}):`, err.message);
+  }
+}
+
+module.exports = { initFirebase, canSend, markSent, getRemoteConfig, saveRemoteConfig, saveWaSession, loadWaSession };

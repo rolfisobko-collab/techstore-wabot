@@ -2,7 +2,7 @@ const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLat
 const qrcode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
-const { canSend, markSent } = require("./firebase");
+const { canSend, markSent, saveWaSession, loadWaSession } = require("./firebase");
 
 const NUM_INSTANCES = 4;
 
@@ -151,6 +151,7 @@ async function connectWhatsapp(id) {
   inst.qrRaw = null;
 
   const authPath = getAuthPath(id);
+  await loadWaSession(id, authPath);
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const { version } = await fetchLatestBaileysVersion();
   console.log(`[WA-${id}] Using WA version ${version.join(".")}`);
@@ -164,7 +165,10 @@ async function connectWhatsapp(id) {
     connectTimeoutMs: 20000,
   });
 
-  inst.sock.ev.on("creds.update", saveCreds);
+  inst.sock.ev.on("creds.update", async () => {
+    await saveCreds();
+    await saveWaSession(id, authPath);
+  });
 
   inst.sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
