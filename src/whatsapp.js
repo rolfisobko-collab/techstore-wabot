@@ -44,6 +44,29 @@ function setInstanceConfig(id, { welcomeMessage, pdfPath }) {
   if (pdfPath !== undefined) instances[id].pdfPath = pdfPath;
 }
 
+async function fetchUrl(url, redirects = 0) {
+  if (redirects > 5) throw new Error("Too many redirects");
+  const https = require("https");
+  const http = require("http");
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith("https") ? https : http;
+    client.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const next = res.headers.location.startsWith("http")
+          ? res.headers.location
+          : new URL(res.headers.location, url).href;
+        res.resume();
+        resolve(fetchUrl(next, redirects + 1));
+      } else {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("error", reject);
+      }
+    }).on("error", reject);
+  });
+}
+
 async function getPdfBuffer(cfg) {
   const pdfPath = cfg.pdfPath || null;
   const pdfUrl = cfg.pdfUrl || null;
@@ -53,27 +76,14 @@ async function getPdfBuffer(cfg) {
   }
 
   if (pdfUrl) {
-    const https = require("https");
-    const http = require("http");
-    const buffer = await new Promise((resolve, reject) => {
-      const client = pdfUrl.startsWith("https") ? https : http;
-      client.get(pdfUrl, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          client.get(res.headers.location, (res2) => {
-            const chunks = [];
-            res2.on("data", (c) => chunks.push(c));
-            res2.on("end", () => resolve(Buffer.concat(chunks)));
-            res2.on("error", reject);
-          }).on("error", reject);
-        } else {
-          const chunks = [];
-          res.on("data", (c) => chunks.push(c));
-          res.on("end", () => resolve(Buffer.concat(chunks)));
-          res.on("error", reject);
-        }
-      }).on("error", reject);
-    });
-    return { buffer, name: cfg.pdfName || "lista-precios.pdf" };
+    try {
+      const buffer = await fetchUrl(pdfUrl);
+      console.log(`[PDF] Downloaded ${buffer.length} bytes from URL`);
+      return { buffer, name: cfg.pdfName || "lista-precios.pdf" };
+    } catch (err) {
+      console.error("[PDF] Download error:", err.message);
+      return null;
+    }
   }
 
   return null;
