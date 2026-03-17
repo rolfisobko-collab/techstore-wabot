@@ -70,6 +70,11 @@ function WaInstance({ id }) {
     await fetch(`${API}/whatsapp/${id}/disconnect`, { method: "POST" });
   };
 
+  const clearSession = async () => {
+    if (!confirm(`¿Limpiar sesión del Número ${id}? Vas a tener que escanear el QR de nuevo.`)) return;
+    await fetch(`${API}/whatsapp/${id}/clear-session`, { method: "POST" });
+  };
+
   const colorMap = {
     connected:    "border-green-300 bg-green-50",
     qr_ready:     "border-yellow-300 bg-yellow-50",
@@ -101,6 +106,9 @@ function WaInstance({ id }) {
               <WifiOff size={13} /> Desconectar
             </Btn>
           )}
+          <Btn onClick={clearSession} variant="secondary" className="text-xs px-3 py-1.5">
+            <RefreshCw size={13} /> Limpiar sesión
+          </Btn>
         </div>
       </div>
 

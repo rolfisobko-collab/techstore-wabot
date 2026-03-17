@@ -89,6 +89,25 @@ router.post("/whatsapp/:id/connect", async (req, res) => {
   }
 });
 
+router.post("/whatsapp/:id/clear-session", async (req, res) => {
+  try {
+    const { disconnectWhatsapp } = require("./whatsapp");
+    const { loadWaSession } = require("./firebase");
+    const fs = require("fs");
+    const path = require("path");
+    const id = parseInt(req.params.id);
+    await disconnectWhatsapp(id);
+    const authPath = path.join(__dirname, `../.wa_auth_${id}`);
+    fs.rmSync(authPath, { recursive: true, force: true });
+    const { getFirestore, doc, deleteDoc } = require("firebase/firestore");
+    const db = getFirestore();
+    await deleteDoc(doc(db, "wa_sessions", String(id))).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/whatsapp/:id/disconnect", async (req, res) => {
   try {
     const { disconnectWhatsapp } = require("./whatsapp");
