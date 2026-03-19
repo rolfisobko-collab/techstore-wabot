@@ -106,9 +106,6 @@ function WaInstance({ id }) {
               <WifiOff size={13} /> Desconectar
             </Btn>
           )}
-          <Btn onClick={clearSession} variant="secondary" className="text-xs px-3 py-1.5">
-            <RefreshCw size={13} /> Limpiar sesión
-          </Btn>
         </div>
       </div>
 
@@ -139,6 +136,11 @@ function WaInstance({ id }) {
       {inst.status === "disconnected" && (
         <p className="text-xs text-gray-400 mt-1">Presioná Conectar para vincular este número.</p>
       )}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <Btn onClick={clearSession} variant="secondary" className="text-xs px-3 py-1.5 w-full justify-center">
+          <RefreshCw size={13} /> Limpiar sesión
+        </Btn>
+      </div>
     </div>
   );
 }
@@ -275,9 +277,6 @@ export default function App() {
                   <WaInstance key={id} id={id} onToast={showToast} />
                 ))}
               </div>
-              <p className="text-xs text-gray-400 mt-5">
-                ⚠️ Si el servidor se reinicia, vas a tener que escanear los QR nuevamente.
-              </p>
             </div>
           )}
 
