@@ -96,7 +96,7 @@ router.post("/whatsapp/:id/clear-session", async (req, res) => {
     const fs = require("fs");
     const path = require("path");
     const id = parseInt(req.params.id);
-    await disconnectWhatsapp(id);
+    await disconnectWhatsapp(id, true);
     const authPath = path.join(__dirname, `../.wa_auth_${id}`);
     fs.rmSync(authPath, { recursive: true, force: true });
     const { getFirestore, doc, deleteDoc } = require("firebase/firestore");

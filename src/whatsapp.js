@@ -237,11 +237,16 @@ async function connectWhatsapp(id) {
   });
 }
 
-async function disconnectWhatsapp(id) {
+async function disconnectWhatsapp(id, doLogout = false) {
   const inst = instances[id];
   if (!inst) return;
   if (inst.sock) {
-    await inst.sock.logout().catch(() => {});
+    if (doLogout) {
+      await inst.sock.logout().catch(() => {});
+    } else {
+      inst.sock.ev.removeAllListeners();
+      inst.sock.ws?.terminate();
+    }
     inst.sock = null;
   }
   inst.status = "disconnected";
