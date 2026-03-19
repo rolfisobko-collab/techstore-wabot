@@ -18,20 +18,22 @@ async function main() {
     console.log(`[App] Panel running at http://localhost:${PORT}`);
   });
 
-  const { connectWhatsapp, NUM_INSTANCES } = require("./src/whatsapp");
-  const { loadWaSession } = require("./src/firebase");
-  const fs = require("fs");
-  const path = require("path");
-  for (let i = 1; i <= NUM_INSTANCES; i++) {
-    const authPath = path.join(__dirname, `.wa_auth_${i}`);
-    await loadWaSession(i, authPath);
-    if (fs.existsSync(path.join(authPath, "creds.json"))) {
-      console.log(`[App] Restoring session for instance ${i}...`);
-      connectWhatsapp(i).catch(err => console.error(`[App] Auto-connect ${i}:`, err.message));
-    }
-  }
-
   console.log("[App] Ready. Connect WhatsApp numbers from the panel.");
+
+  setImmediate(async () => {
+    const { connectWhatsapp, NUM_INSTANCES } = require("./src/whatsapp");
+    const { loadWaSession } = require("./src/firebase");
+    const fs = require("fs");
+    const path = require("path");
+    for (let i = 1; i <= NUM_INSTANCES; i++) {
+      const authPath = path.join(__dirname, `.wa_auth_${i}`);
+      await loadWaSession(i, authPath);
+      if (fs.existsSync(path.join(authPath, "creds.json"))) {
+        console.log(`[App] Restoring session for instance ${i}...`);
+        connectWhatsapp(i).catch(err => console.error(`[App] Auto-connect ${i}:`, err.message));
+      }
+    }
+  });
 }
 
 process.on("SIGINT", () => {
