@@ -141,6 +141,11 @@ async function connectWhatsapp(id) {
   const inst = instances[id];
   if (!inst) throw new Error(`Instance ${id} not found`);
 
+  if (inst.status === "connected") {
+    console.log(`[WA-${id}] Already connected, skipping`);
+    return;
+  }
+
   if (inst.sock) {
     await disconnectWhatsapp(id);
     await new Promise((r) => setTimeout(r, 1000));
