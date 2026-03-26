@@ -1,7 +1,4 @@
 const { v2: cloudinary } = require("cloudinary");
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
 
 let ready = false;
 
@@ -18,20 +15,26 @@ function initCloudinary() {
 async function uploadPdf(buffer, originalName) {
   if (!ready) throw new Error("Cloudinary not configured");
 
-  const tmpPath = path.join(os.tmpdir(), `pricelist_${Date.now()}.pdf`);
-  try {
-    fs.writeFileSync(tmpPath, buffer);
-    const result = await cloudinary.uploader.upload_large(tmpPath, {
-      resource_type: "raw",
-      public_id: `techstore/pdfs/pricelist`,
-      format: "pdf",
-      overwrite: true,
-      chunk_size: 6 * 1024 * 1024,
-    });
-    return { url: result.secure_url, fileName: originalName || "lista-precios.pdf" };
-  } finally {
-    try { fs.unlinkSync(tmpPath); } catch {}
-  }
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        public_id: "techstore/pricelist.pdf",
+        overwrite: true,
+      },
+      (error, result) => {
+        if (error) {
+          console.error("[Cloudinary] Upload error:", error);
+          return reject(error);
+        }
+        const finalUrl = result.secure_url || result.url;
+        console.log("[Cloudinary] Uploaded:", finalUrl);
+        if (!finalUrl) return reject(new Error("Cloudinary did not return a URL"));
+        resolve({ url: finalUrl, fileName: originalName || "lista-precios.pdf" });
+      }
+    );
+    stream.end(buffer);
+  });
 }
 
 module.exports = { initCloudinary, uploadPdf };
