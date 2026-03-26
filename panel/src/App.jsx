@@ -89,26 +89,28 @@ function WaInstance({ id }) {
   return (
     <div className={`rounded-2xl border-2 p-4 ${borderMap[status] || borderMap.disconnected}`}>
       {/* Header */}
-      <div className="flex items-start gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3">
         <div className="w-9 h-9 shrink-0 bg-white border border-gray-100 rounded-xl flex items-center justify-center shadow-sm">
           <MessageCircle size={18} className="text-green-500" />
         </div>
-        <div className="min-w-0 flex-1 pt-0.5">
+        <div className="min-w-0">
           <div className="font-bold text-gray-800 text-sm leading-tight">Número {id}</div>
           <StatusBadge status={status} />
         </div>
-        <div className="shrink-0">
-          {status === "disconnected" && (
-            <Btn onClick={connect} variant="success" className="text-xs px-3 py-1.5">
-              <Wifi size={13} /> Conectar
-            </Btn>
-          )}
-          {status === "connected" && (
-            <Btn onClick={disconnect} variant="danger" className="text-xs px-3 py-1.5">
-              <WifiOff size={13} /> Desconectar
-            </Btn>
-          )}
-        </div>
+      </div>
+
+      {/* Action button */}
+      <div className="mb-3">
+        {status === "disconnected" && (
+          <Btn onClick={connect} variant="success" className="text-xs px-3 py-1.5 w-full">
+            <Wifi size={13} /> Conectar
+          </Btn>
+        )}
+        {status === "connected" && (
+          <Btn onClick={disconnect} variant="danger" className="text-xs px-3 py-1.5 w-full">
+            <WifiOff size={13} /> Desconectar
+          </Btn>
+        )}
       </div>
 
       {/* QR */}
