@@ -359,7 +359,6 @@ export default function App() {
                     <Btn onClick={clearPdf} variant="danger">Eliminar</Btn>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-3">Tamaño máximo: 20 MB</p>
               </Card>
             </div>
           )}
