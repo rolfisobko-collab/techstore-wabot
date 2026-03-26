@@ -37,11 +37,12 @@ router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const { saveConfig } = require("./configLoader");
+    const { uploadPdf } = require("./cloudinary");
     const fileName = req.file.originalname;
-    const localPath = require("path").join(UPLOADS_DIR, "pricelist.pdf");
-    fs.writeFileSync(localPath, req.file.buffer);
-    console.log("[PDF] Saved locally:", localPath);
-    await saveConfig({ pdfPath: localPath, pdfName: fileName, pdfUrl: null });
+    console.log("[PDF] Uploading to Cloudinary...");
+    const { url } = await uploadPdf(req.file.buffer, fileName);
+    console.log("[PDF] Cloudinary URL:", url);
+    await saveConfig({ pdfUrl: url, pdfName: fileName, pdfPath: null });
     res.json({ ok: true, fileName });
   } catch (err) {
     console.error("[PDF] Upload error:", err.message);
@@ -51,8 +52,8 @@ router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
 
 router.get("/pdf/info", (req, res) => {
   const { getConfig } = require("./configLoader");
-  const { pdfPath, pdfName } = getConfig();
-  const exists = !!(pdfPath && fs.existsSync(pdfPath));
+  const { pdfUrl, pdfName } = getConfig();
+  const exists = !!(pdfUrl);
   res.json({ fileName: exists ? pdfName : null, exists });
 });
 
