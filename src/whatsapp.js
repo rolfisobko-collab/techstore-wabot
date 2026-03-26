@@ -44,48 +44,25 @@ function setInstanceConfig(id, { welcomeMessage, pdfPath }) {
   if (pdfPath !== undefined) instances[id].pdfPath = pdfPath;
 }
 
-async function fetchUrl(url, redirects = 0) {
-  if (redirects > 5) throw new Error("Too many redirects");
-  const https = require("https");
-  const http = require("http");
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith("https") ? https : http;
-    client.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        const next = res.headers.location.startsWith("http")
-          ? res.headers.location
-          : new URL(res.headers.location, url).href;
-        res.resume();
-        resolve(fetchUrl(next, redirects + 1));
-      } else {
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => resolve(Buffer.concat(chunks)));
-        res.on("error", reject);
-      }
-    }).on("error", reject);
-  });
+let pdfCache = null;
+
+function invalidatePdfCache() {
+  pdfCache = null;
+  console.log("[PDF] Cache invalidated");
 }
 
-async function getPdfBuffer(cfg) {
-  const pdfPath = cfg.pdfPath || null;
-  const pdfUrl = cfg.pdfUrl || null;
-
-  if (pdfPath && fs.existsSync(pdfPath)) {
-    return { buffer: fs.readFileSync(pdfPath), name: cfg.pdfName || "lista-precios.pdf" };
-  }
-
-  if (pdfUrl) {
-    try {
-      const buffer = await fetchUrl(pdfUrl);
-      console.log(`[PDF] Downloaded ${buffer.length} bytes from URL`);
-      return { buffer, name: cfg.pdfName || "lista-precios.pdf" };
-    } catch (err) {
-      console.error("[PDF] Download error:", err.message);
-      return null;
+async function getPdfBuffer() {
+  if (pdfCache) return pdfCache;
+  try {
+    const { loadPdfBuffer } = require("./firebase");
+    const result = await loadPdfBuffer();
+    if (result) {
+      pdfCache = { buffer: result.buffer, name: result.fileName || "lista-precios.pdf" };
+      return pdfCache;
     }
+  } catch (err) {
+    console.error("[PDF] Load error:", err.message);
   }
-
   return null;
 }
 
@@ -97,7 +74,7 @@ async function sendWelcome(inst, chatId) {
 
   try {
     await inst.sock.sendPresenceUpdate("composing", chatId);
-    const pdf = await getPdfBuffer(cfg);
+    const pdf = await getPdfBuffer();
     if (pdf) {
       await inst.sock.sendMessage(chatId, {
         document: pdf.buffer,
@@ -116,11 +93,9 @@ async function sendWelcome(inst, chatId) {
 }
 
 async function sendCatalog(inst, chatId) {
-  const { getConfig } = require("./configLoader");
-  const cfg = getConfig();
   try {
     await inst.sock.sendPresenceUpdate("composing", chatId);
-    const pdf = await getPdfBuffer(cfg);
+    const pdf = await getPdfBuffer();
     if (pdf) {
       await inst.sock.sendMessage(chatId, {
         document: pdf.buffer,
@@ -267,5 +242,6 @@ module.exports = {
   getAllStatus,
   setInstanceConfig,
   getInstance,
+  invalidatePdfCache,
   NUM_INSTANCES,
 };

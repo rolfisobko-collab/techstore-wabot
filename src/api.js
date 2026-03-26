@@ -36,16 +36,14 @@ router.post("/config", async (req, res) => {
 router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const { savePdfChunks } = require("./firebase");
     const { saveConfig } = require("./configLoader");
-    const { uploadPdf } = require("./cloudinary");
+    const { invalidatePdfCache } = require("./whatsapp");
     const fileName = req.file.originalname;
-    console.log("[PDF] Uploading to Cloudinary...");
-    const { url } = await uploadPdf(req.file.buffer, fileName);
-    console.log("[PDF] Cloudinary URL:", url);
-    await saveConfig({ pdfUrl: url, pdfName: fileName });
-    const { getFirestore, doc, updateDoc, deleteField } = require("firebase/firestore");
-    const db2 = getFirestore();
-    await updateDoc(doc(db2, "config", "main"), { pdfPath: deleteField() }).catch(() => {});
+    console.log(`[PDF] Saving to Firestore (${req.file.buffer.length} bytes)...`);
+    await savePdfChunks(req.file.buffer, fileName);
+    await saveConfig({ pdfName: fileName, pdfUrl: null, pdfPath: null });
+    invalidatePdfCache();
     res.json({ ok: true, fileName });
   } catch (err) {
     console.error("[PDF] Upload error:", err.message);
@@ -53,11 +51,20 @@ router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
   }
 });
 
-router.get("/pdf/info", (req, res) => {
-  const { getConfig } = require("./configLoader");
-  const { pdfUrl, pdfName } = getConfig();
-  const exists = !!(pdfUrl);
-  res.json({ fileName: exists ? pdfName : null, exists });
+router.get("/pdf/info", async (req, res) => {
+  try {
+    const { getFirestore, doc, getDoc } = require("firebase/firestore");
+    const db = getFirestore();
+    const snap = await getDoc(doc(db, "pdf_data", "meta"));
+    if (snap.exists()) {
+      const { fileName, size } = snap.data();
+      res.json({ fileName, exists: true, size });
+    } else {
+      res.json({ fileName: null, exists: false });
+    }
+  } catch {
+    res.json({ fileName: null, exists: false });
+  }
 });
 
 // ── WhatsApp instances ───────────────────────────────────────
