@@ -42,7 +42,10 @@ router.post("/pdf/upload", upload.single("pdf"), async (req, res) => {
     console.log("[PDF] Uploading to Cloudinary...");
     const { url } = await uploadPdf(req.file.buffer, fileName);
     console.log("[PDF] Cloudinary URL:", url);
-    await saveConfig({ pdfUrl: url, pdfName: fileName, pdfPath: null });
+    await saveConfig({ pdfUrl: url, pdfName: fileName });
+    const { getFirestore, doc, updateDoc, deleteField } = require("firebase/firestore");
+    const db2 = getFirestore();
+    await updateDoc(doc(db2, "config", "main"), { pdfPath: deleteField() }).catch(() => {});
     res.json({ ok: true, fileName });
   } catch (err) {
     console.error("[PDF] Upload error:", err.message);
