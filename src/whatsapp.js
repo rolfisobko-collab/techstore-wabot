@@ -190,13 +190,10 @@ async function connectWhatsapp(id) {
     if (type !== "notify") return;
 
     for (const msg of msgs) {
-      if (msg.key.fromMe) continue;
       if (!msg.message) continue;
 
       const chatId = msg.key.remoteJid;
       if (chatId.endsWith("@g.us")) continue;
-      const sender = msg.pushName || chatId;
-      console.log(`[WA-${id}] Message from ${sender}`);
 
       const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").trim().toLowerCase();
 
@@ -204,6 +201,11 @@ async function connectWhatsapp(id) {
         await sendCatalog(inst, chatId);
         continue;
       }
+
+      if (msg.key.fromMe) continue;
+
+      const sender = msg.pushName || chatId;
+      console.log(`[WA-${id}] Message from ${sender}`);
 
       const phone = chatId.replace(/[^0-9]/g, "");
       const ok = await canSend(phone);
