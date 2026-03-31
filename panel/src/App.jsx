@@ -157,8 +157,11 @@ export default function App() {
   const [config, setConfig] = useState(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingMini, setUploadingMini] = useState(false);
   const [pdfInfo, setPdfInfo] = useState({ fileName: null, exists: false });
+  const [pdfInfoMini, setPdfInfoMini] = useState({ fileName: null, exists: false });
   const fileRef = useRef(null);
+  const fileRefMini = useRef(null);
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -168,6 +171,7 @@ export default function App() {
   useEffect(() => {
     fetch(`${API}/config`).then(r => r.json()).then(d => setConfig(d)).catch(() => {});
     fetch(`${API}/pdf/info`).then(r => r.json()).then(d => setPdfInfo(d)).catch(() => {});
+    fetch(`${API}/pdf/info-mini`).then(r => r.json()).then(d => setPdfInfoMini(d)).catch(() => {});
   }, []);
 
   const saveConfig = async () => {
@@ -206,6 +210,28 @@ export default function App() {
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const uploadPdfMini = async (file) => {
+    if (!file) return;
+    setUploadingMini(true);
+    try {
+      const fd = new FormData();
+      fd.append("pdf", file);
+      const r = await fetch(`${API}/pdf/upload-mini`, { method: "POST", body: fd });
+      const d = await r.json();
+      if (d.ok) {
+        showToast(`PDF miniatura subido: ${d.fileName} ✓`);
+        setPdfInfoMini({ fileName: d.fileName, exists: true });
+      } else {
+        showToast(d.error || "Error al subir PDF miniatura", "error");
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, "error");
+    } finally {
+      setUploadingMini(false);
+      if (fileRefMini.current) fileRefMini.current.value = "";
     }
   };
 
@@ -359,6 +385,33 @@ export default function App() {
                     <Btn onClick={clearPdf} variant="danger">Eliminar</Btn>
                   )}
                 </div>
+              </Card>
+
+              <Card className="max-w-lg mt-6">
+                <h2 className="text-base font-bold text-gray-800 mb-1">Catálogo Miniatura <span className="text-xs font-normal text-gray-400 ml-1">#miniatura</span></h2>
+                <p className="text-gray-500 text-xs mb-4">Se envía cuando alguien escribe <strong>#miniatura</strong>.</p>
+                <div className="flex items-start gap-3 mb-5 p-4 rounded-xl border border-gray-100 bg-gray-50">
+                  <FileText size={26} className={`shrink-0 ${pdfInfoMini.exists ? "text-violet-500" : "text-gray-300"}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-sm text-gray-700 truncate">
+                      {pdfInfoMini.exists ? pdfInfoMini.fileName : "Sin PDF cargado"}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {pdfInfoMini.exists ? "PDF activo" : "Subí el catálogo miniatura"}
+                    </div>
+                  </div>
+                  {pdfInfoMini.exists && (
+                    <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                      <CheckCircle size={11} /> Activo
+                    </span>
+                  )}
+                </div>
+                <input ref={fileRefMini} type="file" accept="application/pdf" className="hidden"
+                  onChange={e => uploadPdfMini(e.target.files?.[0])} />
+                <Btn onClick={() => { if (fileRefMini.current) fileRefMini.current.value = ""; fileRefMini.current?.click(); }}
+                  disabled={uploadingMini} variant="primary">
+                  <Upload size={15} /> {uploadingMini ? "Subiendo…" : pdfInfoMini.exists ? "Reemplazar PDF" : "Subir PDF"}
+                </Btn>
               </Card>
             </div>
           )}

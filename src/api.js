@@ -67,6 +67,39 @@ router.get("/pdf/info", async (req, res) => {
   }
 });
 
+// ── PDF miniatura upload ─────────────────────────────────────
+router.post("/pdf/upload-mini", upload.single("pdf"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const { savePdfChunksMini } = require("./firebase");
+    const { invalidatePdfCacheMini } = require("./whatsapp");
+    const fileName = req.file.originalname;
+    console.log(`[PDF mini] Saving to Firestore (${req.file.buffer.length} bytes)...`);
+    await savePdfChunksMini(req.file.buffer, fileName);
+    invalidatePdfCacheMini();
+    res.json({ ok: true, fileName });
+  } catch (err) {
+    console.error("[PDF mini] Upload error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/pdf/info-mini", async (req, res) => {
+  try {
+    const { getFirestore, doc, getDoc } = require("firebase/firestore");
+    const db = getFirestore();
+    const snap = await getDoc(doc(db, "pdf_data_mini", "meta"));
+    if (snap.exists()) {
+      const { fileName, size } = snap.data();
+      res.json({ fileName, exists: true, size });
+    } else {
+      res.json({ fileName: null, exists: false });
+    }
+  } catch {
+    res.json({ fileName: null, exists: false });
+  }
+});
+
 // ── WhatsApp instances ───────────────────────────────────────
 router.get("/whatsapp/status", (req, res) => {
   const { getAllStatus } = require("./whatsapp");

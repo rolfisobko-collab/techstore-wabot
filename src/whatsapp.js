@@ -45,10 +45,16 @@ function setInstanceConfig(id, { welcomeMessage, pdfPath }) {
 }
 
 let pdfCache = null;
+let pdfCacheMini = null;
 
 function invalidatePdfCache() {
   pdfCache = null;
   console.log("[PDF] Cache invalidated");
+}
+
+function invalidatePdfCacheMini() {
+  pdfCacheMini = null;
+  console.log("[PDF mini] Cache invalidated");
 }
 
 async function getPdfBuffer() {
@@ -62,6 +68,21 @@ async function getPdfBuffer() {
     }
   } catch (err) {
     console.error("[PDF] Load error:", err.message);
+  }
+  return null;
+}
+
+async function getPdfBufferMini() {
+  if (pdfCacheMini) return pdfCacheMini;
+  try {
+    const { loadPdfBufferMini } = require("./firebase");
+    const result = await loadPdfBufferMini();
+    if (result) {
+      pdfCacheMini = { buffer: result.buffer, name: result.fileName || "catalogo-miniatura.pdf" };
+      return pdfCacheMini;
+    }
+  } catch (err) {
+    console.error("[PDF mini] Load error:", err.message);
   }
   return null;
 }
@@ -109,6 +130,26 @@ async function sendCatalog(inst, chatId) {
     await inst.sock.sendPresenceUpdate("available", chatId);
   } catch (err) {
     console.error(`[WA-${inst.id}] Error sending catalog:`, err.message);
+  }
+}
+
+async function sendMiniCatalog(inst, chatId) {
+  try {
+    await inst.sock.sendPresenceUpdate("composing", chatId);
+    const pdf = await getPdfBufferMini();
+    if (pdf) {
+      await inst.sock.sendMessage(chatId, {
+        document: pdf.buffer,
+        mimetype: "application/pdf",
+        fileName: pdf.name,
+        caption: "📋 Aquí tienes nuestro catálogo miniatura.",
+      });
+    } else {
+      await inst.sock.sendMessage(chatId, { text: "No hay catálogo miniatura disponible por el momento." });
+    }
+    await inst.sock.sendPresenceUpdate("available", chatId);
+  } catch (err) {
+    console.error(`[WA-${inst.id}] Error sending mini catalog:`, err.message);
   }
 }
 
@@ -202,6 +243,11 @@ async function connectWhatsapp(id) {
         continue;
       }
 
+      if (text === "#miniatura") {
+        await sendMiniCatalog(inst, chatId);
+        continue;
+      }
+
       if (msg.key.fromMe) continue;
 
       const sender = msg.pushName || chatId;
@@ -245,5 +291,6 @@ module.exports = {
   setInstanceConfig,
   getInstance,
   invalidatePdfCache,
+  invalidatePdfCacheMini,
   NUM_INSTANCES,
 };

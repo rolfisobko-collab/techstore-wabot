@@ -180,4 +180,41 @@ async function loadPdfBuffer() {
   }
 }
 
-module.exports = { initFirebase, canSend, markSent, getRemoteConfig, saveRemoteConfig, saveWaSession, loadWaSession, savePdfChunks, loadPdfBuffer };
+async function savePdfChunksMini(buffer, fileName) {
+  if (!db) throw new Error("Firestore not initialized");
+  const totalChunks = Math.ceil(buffer.length / CHUNK_SIZE);
+  await setDoc(doc(db, "pdf_data_mini", "meta"), {
+    fileName,
+    totalChunks,
+    size: buffer.length,
+    updatedAt: serverTimestamp(),
+  });
+  for (let i = 0; i < totalChunks; i++) {
+    const chunk = buffer.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+    await setDoc(doc(db, "pdf_data_mini", `chunk_${i}`), { data: chunk.toString("base64"), index: i });
+  }
+  console.log(`[Firebase] PDF mini saved in ${totalChunks} chunks (${buffer.length} bytes)`);
+}
+
+async function loadPdfBufferMini() {
+  if (!db) return null;
+  try {
+    const metaSnap = await getDoc(doc(db, "pdf_data_mini", "meta"));
+    if (!metaSnap.exists()) return null;
+    const { fileName, totalChunks } = metaSnap.data();
+    const chunks = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const snap = await getDoc(doc(db, "pdf_data_mini", `chunk_${i}`));
+      if (!snap.exists()) return null;
+      chunks.push(Buffer.from(snap.data().data, "base64"));
+    }
+    const buffer = Buffer.concat(chunks);
+    console.log(`[Firebase] PDF mini loaded: ${buffer.length} bytes`);
+    return { buffer, fileName };
+  } catch (err) {
+    console.error("[Firebase] loadPdfBufferMini error:", err.message);
+    return null;
+  }
+}
+
+module.exports = { initFirebase, canSend, markSent, getRemoteConfig, saveRemoteConfig, saveWaSession, loadWaSession, savePdfChunks, loadPdfBuffer, savePdfChunksMini, loadPdfBufferMini };
