@@ -4,6 +4,14 @@ const { createApp } = require("./src/api");
 const { initFirebase } = require("./src/firebase");
 const { initCloudinary } = require("./src/cloudinary");
 
+process.on("uncaughtException", (err) => {
+  console.error("[App] Uncaught exception (process kept alive):", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[App] Unhandled rejection (process kept alive):", reason);
+});
+
 const PORT = process.env.PORT || 8000;
 
 async function main() {

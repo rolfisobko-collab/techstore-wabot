@@ -157,13 +157,15 @@ async function connectWhatsapp(id) {
   const inst = instances[id];
   if (!inst) throw new Error(`Instance ${id} not found`);
 
-  if (inst.status === "connected") {
-    console.log(`[WA-${id}] Already connected, skipping`);
+  if (inst.status === "connected" || inst.status === "connecting") {
+    console.log(`[WA-${id}] Already ${inst.status}, skipping`);
     return;
   }
 
   if (inst.sock) {
-    await disconnectWhatsapp(id);
+    inst.sock.ev.removeAllListeners();
+    inst.sock.ws?.terminate();
+    inst.sock = null;
     await new Promise((r) => setTimeout(r, 1000));
   }
 
@@ -217,12 +219,16 @@ async function connectWhatsapp(id) {
       const loggedOut = code === DisconnectReason.loggedOut;
       console.log(`[WA-${id}] Connection closed (code ${code}), loggedOut: ${loggedOut}`);
 
+      inst.sock = null;
+      inst.status = "disconnected";
+      inst.qrDataUrl = null;
+      inst.qrRaw = null;
+
       if (loggedOut) {
-        inst.status = "disconnected";
-        inst.sock = null;
+        console.log(`[WA-${id}] Logged out, not reconnecting`);
       } else {
-        inst.status = "connecting";
-        setTimeout(() => connectWhatsapp(id), 5000);
+        console.log(`[WA-${id}] Reconnecting in 8s...`);
+        setTimeout(() => connectWhatsapp(id), 8000);
       }
     }
   });
