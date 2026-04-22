@@ -14,9 +14,27 @@ const firebaseConfig = {
 
 let db = null;
 
-const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
+/** Zona horaria para “una vez por día” en la bienvenida (IANA). */
+const WELCOME_DAILY_TZ = process.env.WELCOME_DAILY_TZ || "America/Argentina/Buenos_Aires";
 
-// In-memory fallback
+function welcomeDayKey(ms) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: WELCOME_DAILY_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ms));
+}
+
+function lastSentToMillis(lastSent) {
+  if (lastSent == null) return null;
+  if (typeof lastSent === "number") return lastSent;
+  if (typeof lastSent.toMillis === "function") return lastSent.toMillis();
+  const n = Number(lastSent);
+  return Number.isFinite(n) ? n : null;
+}
+
+// In-memory fallback: último envío de bienvenida (epoch ms)
 const memoryCache = new Map();
 
 function initFirebase() {
@@ -52,18 +70,21 @@ async function saveRemoteConfig(updates) {
 
 async function canSend(phone) {
   const now = Date.now();
+  const todayKey = welcomeDayKey(now);
 
   if (!db) {
-    const last = memoryCache.get(phone) || 0;
-    return now - last > COOLDOWN_MS;
+    const lastMs = memoryCache.get(phone);
+    if (lastMs == null) return true;
+    return welcomeDayKey(lastMs) !== todayKey;
   }
 
   try {
     const ref = doc(db, "clientes", phone);
     const snap = await getDoc(ref);
     if (!snap.exists()) return true;
-    const { lastSent } = snap.data();
-    return now - lastSent > COOLDOWN_MS;
+    const lastMs = lastSentToMillis(snap.data().lastSent);
+    if (lastMs == null) return true;
+    return welcomeDayKey(lastMs) !== todayKey;
   } catch (err) {
     console.error("[Firebase] canSend error:", err.message);
     return true;

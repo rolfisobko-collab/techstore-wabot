@@ -242,8 +242,6 @@ async function connectWhatsapp(id) {
       const chatId = msg.key.remoteJid;
       if (chatId.endsWith("@g.us")) continue;
 
-      if (msg.key.fromMe) continue;
-
       const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").trim().toLowerCase();
 
       if (text === "#catalogo") {
@@ -255,6 +253,8 @@ async function connectWhatsapp(id) {
         await sendMiniCatalog(inst, chatId);
         continue;
       }
+
+      if (msg.key.fromMe) continue;
 
       const sender = msg.pushName || chatId;
       console.log(`[WA-${id}] Message from ${sender}`);
