@@ -14,8 +14,8 @@ const firebaseConfig = {
 
 let db = null;
 
-/** Zona horaria para “una vez por día” en la bienvenida (IANA). */
-const WELCOME_DAILY_TZ = process.env.WELCOME_DAILY_TZ || "America/Argentina/Buenos_Aires";
+/** Zona horaria fija para “una vez por día” en la bienvenida (IANA). */
+const WELCOME_DAILY_TZ = "America/Argentina/Buenos_Aires";
 
 function welcomeDayKey(ms) {
   return new Intl.DateTimeFormat("en-CA", {
